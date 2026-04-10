@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<meta name="theme-color" content="#f4000b">
+<title>RADIO ATIVIDADE FM</title>
+<meta name="description" content="ATIVIDADE FM. HE-AACPlus" />
+<meta name="keywords" content="ATIVIDADE FM" /> 
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="0" />
+<meta property="og:image" content="https://i.imgur.com/v3cg03k.jpeg"> 
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="512">
+<meta property="og:image:height" content="512"> 
+<link rel="icon" type="image/png" href="https://i.imgur.com/hpS9Bme.png" />
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css" rel="stylesheet">
+<script src="https://live.mbahnunungonline.net/dist/js/jquery-3.2.1.min.js"></script>
+<script src="https://live.mbahnunungonline.net/dist/js/lunaradio-sincors.js"></script>
+<style>
+html,body{font-family:"Open Sans",sans-serif;height:100%;margin:0;display:flex;flex-direction:column;color:#272829}
+a{text-decoration:none;color:rgba(255,255,255,1)}
+a:hover{color:rgba(255,255,255,1);text-decoration:none}
+
+#header{
+    position:fixed;
+    top:0;
+    left:0;
+    z-index:100;
+    transition:all .5s;
+    overflow-y:auto;
+    background:rgba(255,255,255,0);
+    padding:20px 20px 0
+}
+
+.nav-menu *{margin:0;padding:0;list-style:none}
+.nav-menu > ul > li{position:relative;white-space:nowrap}
+.nav-menu a{
+    display:flex;
+    align-items:center;
+    color:red;
+    padding-left:18px;
+    margin-bottom:8px;
+    transition:.3s;
+    font-size:15px;
+    border-radius:50px;
+    background:#f2f3f5;
+    height:46px;
+    width:100%;
+    overflow:hidden;
+    transition:.3s
+}
+.nav-menu a i{font-size:16px}
+.nav-menu a span{padding:0 5px 0 7px;color:#000}
+.nav-menu li:hover > a{color:blue;background:#00cc45}
+.nav-menu li:hover > a span{color:#fff}
+
+/* botão padrão */
+.mobile-nav-toggle{
+    position:fixed;
+    top:15px;
+    left:15px;
+    right:auto;
+    z-index:101;
+    border:0;
+    background:none;
+    font-size:24px;
+    transition:all .4s;
+    outline:none!important;
+    line-height:1;
+    cursor:pointer;
+    text-align:left
+}
+.mobile-nav-toggle i{color:#fff}
+
+/* quando abrir o menu, botão vai para a direita */
+.mobile-nav-active{
+    overflow:hidden
+}
+.mobile-nav-active #header{
+    left:0
+}
+.mobile-nav-active .mobile-nav-toggle{
+    left:auto;
+    right:15px;
+    text-align:right
+}
+.mobile-nav-active .mobile-nav-toggle i{
+    color:#fff
+}
+
+#player{margin:0 auto;width:100%;height:100%}
+.background_hora{
+    width:196px;
+    height:46px;
+    background-color:#fff;
+    position:absolute;
+    right:20px;
+    top:18px;
+    border-radius:50px
+}
+#relogio{
+    margin:0;
+    position:absolute;
+    top:50%;
+    left:50%;
+    margin-right:-50%;
+    transform:translate(-50%,-50%);
+    font-size:30px;
+    font-family:"Poppins",sans-serif;
+    color:red
+}
+.back-to-top{
+    position:fixed;
+    display:none;
+    width:40px;
+    height:40px;
+    border-radius:50px;
+    right:15px;
+    bottom:15px;
+    background:#3a0d5c;
+    color:#fff;
+    transition:display .5s ease-in-out;
+    z-index:99999
+}
+.back-to-top i{
+    font-size:24px;
+    position:absolute;
+    top:7px;
+    left:8px
+}
+.back-to-top:hover{
+    color:#fff;
+    background:#0678e3;
+    transition:background .2s ease-in-out
+}
+
+/* Diminuir um pouco o tamanho da fonte do nome da rádio (ATIVIDADE FM)
+   exibido pelo Lunaradio. O plugin define o tamanho via atributo style
+   em #playertextradioname e na classe .playertextradionamespan. Aqui
+   usamos em unidades relativas (em) e !important para sobrepor o valor
+   padrão, reduzindo a fonte para 85% do tamanho original. */
+#player #playertextradioname,
+#player .playertextradionamespan {
+    font-size: 1.70em !important;
+}
+
+/* desktop/tablet grande: menu normal, sem botão */
+@media (min-width: 769px){
+    .mobile-nav-toggle{
+        display:none
+    }
+
+    #header{
+        left:0;
+        width:auto;
+        background:rgba(255,255,255,0);
+        border-right:none;
+        padding:20px 20px 0
+    }
+}
+
+/* celular: só ativa depois que o relógio some */
+@media (max-width: 768px){
+    #header{
+        width:auto;
+        background:#fff;
+        border-right:1px solid #e6e9ec;
+        left:-300px;
+        padding:20px 30px 100vh 10px
+    }
+
+    #player{
+        width:100%;
+        height:100%
+    }
+
+    .background_hora{
+        display:none
+    }
+
+    #relogio{
+        display:none
+    }
+}
+</style>
+</head>
+
+<body>
+<div style="width:100%;height:100%;background: #000000 url(https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEgKnLmCvLTUZxPyFSyVJDn8asNtV4v3aUG7AkdGEHtN_ppUiZOgWrwxUvx-49QMSvtZvdxz5cYBo_Ba61E2MFwFXXtiq1w9s3WVXFIQZfhwEG5_SsfDnB9xWcmRlqDcOzjktkQV5aNgYa6oJfmZsHudagGLG4VBTQPUWlbBlDVe2E_SJNJyctQknvsG-wkO/s1600/0CoFaAT.jpg) bottom / cover no-repeat;">
+
+<div id="player"></div>
+<script>
+$("#player").lunaradio({
+radioname: "ATIVIDADE FM", 
+streamurl: "https://stream.zeno.fm/z2h3tpp2fchvv", 
+streamtype: "zeno", 
+icecastmountpoint: "/mbahnunungonline",
+coverimage: "https://i.imgur.com/v3cg03k.jpeg",
+volume:"100", autoplay:"false", 
+shoutcastpath: "/rbtfm?type=https&amp;nocache=377274",
+shoutcastid: "1", 
+onlycoverimage:"false", coverstyle:"square", usevisualizer:"real", visualizertype:"8",
+userinterface:"big", backgroundcolor:"", fontcolor:"#ffffff", hightlightcolor:"#000000", fontname:"Orbitron", googlefont:"Orbitron", fontratio:"0.7", scroll:"true", displayliveicon:"true", metadatatechnic: "corsproxy", ownmetadataurl: "", corsproxy: "https://cors-proxy.elfsight.com/", usestreamcorsproxy: "false", visualizeropacity:"1.0", multicolorvisualizer:"true", color1:"#00FF00", color2:"#ffff00", color3:"#FF1F6F", color4:"#FF1F6F", metadatainterval:"20000", 
+});
+</script>
+
+<!-- Metadata overlay script for ATIVIDADE FM -->
+<script src="atividade_metadata.js"></script>
+
+<button type="button" class="mobile-nav-toggle"><i class="fas fa-bars"></i></button>
+<header id="header">
+<nav class="nav-menu">
+<ul>
+<li><a target="_blank" href="https://api.whatsapp.com/send?phone=6281234701692&text=Hai"><i class="fas fa-bullhorn"></i><span>Anuncie</span></a></li>
+<li><a target="_blank" href="https://www.facebook.com/"><i class="fab fa-facebook-square" alt="Facebook"></i>
+<span>Facebook</span></a></li>
+<li><a target="_blank" href="https://www.instagram.com/"><i class="fab fa-instagram-square" alt="Instagram"></i>
+<span>Instagram</span></a></li>
+<li><a href="https://api.whatsapp.com/send?phone=6281234701692&text=Hola" target="_blank"><i class="fab fa-whatsapp-square" alt="Whatsapp"></i>
+<span>Whatsapp</span></a></li>
+<li><a target="_blank" href="https://www.tiktok.com/es/"><i class="fab fa-tiktok"></i><span>tiktok</span></a></li>
+</ul>
+</nav>
+</header>
+
+
+<div class="background_hora"><div id="relogio">00:00:00</div></div>
+<script>
+(function () {
+    const elementoID = document.getElementById('relogio');
+    const TIME_API_URL = 'https://time.now/developer/api/timezone/America/Sao_Paulo';
+    let relogioTimer = null;
+    let resincronizaTimer = null;
+    let serverOffsetMs = 0;
+    let timezoneAtual = 'America/Sao_Paulo';
+
+    function formatar2(n) {
+        return String(n).padStart(2, '0');
+    }
+
+    function renderizarHora() {
+        const agoraServidor = new Date(Date.now() + serverOffsetMs);
+
+        try {
+            const partes = new Intl.DateTimeFormat('pt-BR', {
+                timeZone: timezoneAtual,
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: false
+            }).formatToParts(agoraServidor);
+
+            const hh = partes.find(p => p.type === 'hour')?.value || '00';
+            const mm = partes.find(p => p.type === 'minute')?.value || '00';
+            const ss = partes.find(p => p.type === 'second')?.value || '00';
+
+            elementoID.textContent = `${hh}:${mm}:${ss}`;
+        } catch (erro) {
+            console.error('Erro ao renderizar relógio:', erro);
+            const hh = formatar2(agoraServidor.getHours());
+            const mm = formatar2(agoraServidor.getMinutes());
+            const ss = formatar2(agoraServidor.getSeconds());
+            elementoID.textContent = `${hh}:${mm}:${ss}`;
+        }
+    }
+
+    async function sincronizarHora() {
+        try {
+            const resposta = await fetch(TIME_API_URL, { cache: 'no-store' });
+            if (!resposta.ok) {
+                throw new Error('Falha ao consultar Time.now');
+            }
+
+            const dados = await resposta.json();
+
+            if (!dados || !dados.datetime) {
+                throw new Error('Resposta da Time.now sem datetime');
+            }
+
+            timezoneAtual = dados.timezone || 'America/Sao_Paulo';
+
+            const apiNowMs = new Date(dados.datetime).getTime();
+            serverOffsetMs = apiNowMs - Date.now();
+
+            renderizarHora();
+        } catch (erro) {
+            console.error('Erro ao sincronizar relógio pela Time.now:', erro);
+            renderizarHora();
+        }
+    }
+
+    renderizarHora();
+    sincronizarHora();
+
+    if (relogioTimer) clearInterval(relogioTimer);
+    relogioTimer = setInterval(renderizarHora, 1000);
+
+    if (resincronizaTimer) clearInterval(resincronizaTimer);
+    resincronizaTimer = setInterval(sincronizarHora, 5 * 60 * 1000);
+})();
+</script>
+</div>
+
+
+<footer style="display:grid;align-content:end">
+        <div style="background-color:#222;color:#fff;font-family:Orbitron;text-align:center;padding:20px">
+            &copy; Copyright 2026 - ATIVIDADE FM</a>
+        </div>
+    </footer>
+
+<script>
+$(".mobile-nav-toggle").click(function(){
+$("body").toggleClass("mobile-nav-active");
+$(".mobile-nav-toggle i").toggleClass("fa-bars fa-times");
+});
+</script>
+</body>
+</html>
