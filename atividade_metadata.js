@@ -98,9 +98,9 @@
     if (isMobileLandscapeView()) {
       gapAfterRadio = 12;
     } else if (isMobilePortraitView()) {
-      gapAfterRadio = 2;
+      gapAfterRadio = 8;
     } else {
-      gapAfterRadio = 4;
+      gapAfterRadio = 10;
     }
     const top = Math.max(0, radioRect.bottom - playerRect.top + gapAfterRadio);
 

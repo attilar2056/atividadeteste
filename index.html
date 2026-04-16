@@ -242,7 +242,7 @@ footer {
         text-align: left !important;
         width: auto !important;
         max-width: calc(100% - 52%) !important;
-        font-size: 1.14em !important;
+        font-size: 1.04em !important;
         white-space: nowrap !important;
         position: absolute !important;
         margin: 0 !important;
@@ -319,7 +319,7 @@ footer {
         transform: translateY(-50%) !important;
     }
 
-    /* No modo paisagem do celular, o VU fica removido */
+    /* No modo paisagem do celular, o VU continua existindo, porém fica apenas oculto */
     body div#player div#playerbuttonanalyzer {
         z-index: 20 !important;
     }
@@ -435,7 +435,7 @@ footer {
     /* Descer o texto da música/cantor sem tocar a barra de volume */
     body div#player #atividade-song-info-external {
         /* Move o texto um pouco para baixo comparado ao valor original de 22% */
-        top: 21.2% !important;
+        top: 22.4% !important;
     }
 
     /* Aumentar o tamanho dos ícones de volume (mute/unmute) */
@@ -463,12 +463,12 @@ footer {
     /* Aproximar o ícone LIVE do botão de play/pause */
     body div#player div#playericonlive {
         /* Desce mais um pouco e reduz levemente o LIVE sem mexer na posição horizontal */
-        top: calc(var(--land-vol-controls-top) + 28px) !important;
+        top: calc(var(--land-vol-controls-top) + 31px) !important;
         left: 73% !important;
-        min-width: 32px !important;
-        min-height: 32px !important;
-        width: 32px !important;
-        height: 32px !important;
+        min-width: 30px !important;
+        min-height: 30px !important;
+        width: 30px !important;
+        height: 30px !important;
         display: flex !important;
         align-items: center !important;
         justify-content: center !important;
@@ -480,11 +480,11 @@ footer {
     /* Subir levemente o nome da rádio e da música/cantor */
     body div#player div#playertextradioname {
         /* Sobe um pouco o nome da rádio para ficar mais perto da foto */
-        margin-top: -30px !important;
+        margin-top: -36px !important;
     }
     body div#player #atividade-song-info-external {
-        /* Sobe a linha música/cantor junto, sem encostar em outros elementos */
-        margin-top: -18px !important;
+        /* Desce um pouco a linha música/cantor no retrato, mantendo o nome da rádio igual */
+        margin-top: -8px !important;
     }
 }
 
@@ -493,11 +493,11 @@ footer {
     /* Subir levemente o nome da rádio e da música/cantor */
     body div#player div#playertextradioname {
         /* Sobe um pouco o nome da rádio no PC para aproximar da foto */
-        margin-top: -38px !important;
+        margin-top: -44px !important;
     }
     body div#player #atividade-song-info-external {
-        /* Sobe um pouco música/cantor no PC mantendo leitura e folga */
-        margin-top: -18px !important;
+        /* Desce um pouco a linha música/cantor no PC, mantendo o nome da rádio igual */
+        margin-top: -8px !important;
     }
 
     /* Aumentar o tamanho dos ícones de volume no modo desktop/PC
@@ -573,7 +573,7 @@ footer {
             shoutcastid: "1",
             onlycoverimage: "false",
             coverstyle: "square",
-            usevisualizer: isMobileLandscape() ? "false" : "real",
+            usevisualizer: "real",
             visualizertype: "8",
             userinterface: "big",
             backgroundcolor: "",
@@ -609,7 +609,7 @@ footer {
 <header id="header">
 <nav class="nav-menu">
 <ul>
-<li><a target="_blank" href="https://api.whatsapp.com/send?phone=55&text=Hai"><i class="fas fa-bullhorn"></i><span>Anuncie</span></a></li>
+<li><a target="_blank" href="https://api.whatsapp.com/send?phone=6281234701692&text=Hai"><i class="fas fa-bullhorn"></i><span>Anuncie</span></a></li>
 <li><a target="_blank" href="https://www.facebook.com/"><i class="fab fa-facebook-square" alt="Facebook"></i>
 <span>Facebook</span></a></li>
 <li><a target="_blank" href="https://www.instagram.com/"><i class="fab fa-instagram-square" alt="Instagram"></i>
