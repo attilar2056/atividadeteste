@@ -3,283 +3,438 @@
  *
  * Este script exibe a capa do álbum e informações da música apenas
  * depois que o usuário clica no botão de play do player Lunaradio.
- * Enquanto o usuário não interagir, a página mostra apenas o logotipo
- * padrão da rádio. O script continua a buscar metadados, mas só
- * mostra as informações quando a reprodução for iniciada pelo usuário.
+ * Corrigido para manter o estado ao redimensionar, evitar som duplicado e busca inteligente de capas.
  */
 
 (function() {
+  const DEFAULT_LOGO = 'https://i.imgur.com/v3cg03k.jpeg';
+  
+  // Estado global persistente dentro do closure para sobreviver a reinicializações do player
+  let state = {
+    overlay: null,
+    img: null,
+    text: null,
+    externalText: null,
+    lastTitle: '',
+    currentSong: '',
+    currentArtist: '',
+    userInitiatedPlay: false,
+    layoutListenersBound: false,
+    playerClickBound: false
+  };
+
+  /**
+   * Limpa o título da música para melhorar a busca no Deezer.
+   */
+  function cleanTitleForSearch(artist, song) {
+    let q = ((artist || '') + ' ' + (song || '')).trim();
+    if (!q) return '';
+
+    // 1. Remove prefixos de ranking como "71. ", "01 - ", etc no início da string
+    q = q.replace(/^[0-9]{1,3}[\s.\-_]+/, '');
+
+    // 2. Remove informações de BPM (ex: " - 110 bpm")
+    q = q.replace(/\s*-\s*[0-9]{2,3}\s*bpm/gi, '');
+
+    // 3. Remove textos entre parênteses ou colchetes (ex: "(Ultimix)", "[Radio Edit]")
+    q = q.replace(/\s*[\(\[][^\)\]]*[\)\]]/g, '');
+
+    // 4. Remove caracteres especiais e mantém apenas letras, números e espaços básicos
+    // Nota: Mantemos números aqui pois alguns artistas/músicas precisam deles (ex: "U2", "Mambo No. 5")
+    q = q.replace(/[^\w\sÀ-ÿ]/gi, ' ').replace(/\s+/g, ' ').trim();
+
+    return q;
+  }
+
+  function isMobileLandscapeView() {
+    return window.matchMedia('(max-width: 900px) and (orientation: landscape)').matches;
+  }
+
+  function isMobilePortraitView() {
+    return window.matchMedia('(max-width: 900px) and (orientation: portrait)').matches;
+  }
+
+  function fitTextToWidth(el, maxPx, minPx) {
+    if (!el) return;
+    let size = maxPx;
+    el.style.fontSize = size + 'px';
+    while (size > minPx && el.scrollWidth > el.clientWidth) {
+      size -= 1;
+      el.style.fontSize = size + 'px';
+    }
+  }
+
+  function ensureExternalText() {
+    const player = document.getElementById('player');
+    if (!player) return null;
+
+    let el = document.getElementById('atividade-song-info-external');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'atividade-song-info-external';
+      player.appendChild(el);
+    }
+
+    state.externalText = el;
+    return el;
+  }
+
+  function positionExternalText() {
+    const el = ensureExternalText();
+    const radio = document.getElementById('playertextradioname');
+    const player = document.getElementById('player');
+    const cover = document.getElementById('playercoverwrapper');
+    if (!el || !radio || !player) return;
+
+    if (!el.textContent) {
+      el.style.display = 'none';
+      return;
+    }
+
+    const radioRect = radio.getBoundingClientRect();
+    const playerRect = player.getBoundingClientRect();
+    const coverRect = cover ? cover.getBoundingClientRect() : null;
+    let gapAfterRadio = 10;
+    if (isMobileLandscapeView()) {
+      gapAfterRadio = 12;
+    } else if (isMobilePortraitView()) {
+      gapAfterRadio = 2;
+    } else {
+      gapAfterRadio = 4;
+    }
+    const top = Math.max(0, radioRect.bottom - playerRect.top + gapAfterRadio);
+
+    let left = 12;
+    let width = Math.max(120, playerRect.width - 24);
+    let textAlign = 'center';
+    let maxPx = 30;
+    let minPx = 12;
+
+    if (isMobileLandscapeView()) {
+      const coverRight = coverRect ? (coverRect.right - playerRect.left) : 0;
+      left = Math.max(coverRight + 12, radioRect.left - playerRect.left);
+      width = Math.max(120, playerRect.width - left - 14);
+      textAlign = 'left';
+      maxPx = 30;
+      minPx = 11;
+    } else if (isMobilePortraitView()) {
+      left = 12;
+      width = Math.max(120, playerRect.width - 24);
+      textAlign = 'center';
+      maxPx = 26;
+      minPx = 11;
+    } else {
+      left = 20;
+      width = Math.max(200, playerRect.width - 40);
+      textAlign = 'center';
+      maxPx = 30;
+      minPx = 12;
+    }
+
+    el.style.left = left + 'px';
+    el.style.top = top + 'px';
+    el.style.width = width + 'px';
+    el.style.textAlign = textAlign;
+    el.style.display = 'block';
+    fitTextToWidth(el, maxPx, minPx);
+  }
+
+  function applyOverlayLayoutMode() {
+    if (!state.img || !state.text || !state.overlay) return;
+
+    state.img.style.width = '100%';
+    state.img.style.height = '100%';
+    state.overlay.style.justifyContent = 'center';
+    state.text.style.display = 'none';
+  }
+
+  function syncSongInfoLayout(info) {
+    const external = ensureExternalText();
+    if (!state.text || !external) return;
+
+    applyOverlayLayoutMode();
+    state.text.style.display = 'none';
+    external.textContent = info || '';
+    positionExternalText();
+  }
+
   function init() {
-    const DEFAULT_LOGO = 'https://i.imgur.com/v3cg03k.jpeg';
-
-    // Elementos e estado da sobreposição
-    let overlay, img, text;
-    let lastTitle = '';
-    let currentSong = '';
-    let currentArtist = '';
-    let userInitiatedPlay = false;
-
-    /**
-     * Determina se o player está atualmente reproduzindo observando
-     * a visibilidade do botão de pausa criado pelo Lunaradio. O
-     * plugin alterna entre #playerbuttonplay e #playerbuttonpause ao
-     * iniciar ou pausar o áudio. Se o botão de pausa estiver
-     * visível (display diferente de 'none' e opacidade maior que 0),
-     * considera-se que o player está em reprodução.
-     */
     function isPlaying() {
       const pauseBtn = document.getElementById('playerbuttonpause');
       if (!pauseBtn) return false;
       const style = window.getComputedStyle(pauseBtn);
-      // Quando o Lunaradio oculta o botão, display é 'none'.
       return style.display !== 'none' && parseFloat(style.opacity || '0') > 0;
     }
 
-    /**
-     * Espera o wrapper da capa do Lunaradio ser criado e então monta a
-     * sobreposição. Usa polling pois o player renderiza elementos
-     * assíncronos.
-     */
     function waitForWrapper() {
       const wrapper = document.getElementById('playercoverwrapper');
       if (wrapper) {
         if (getComputedStyle(wrapper).position === 'static') {
           wrapper.style.position = 'relative';
         }
-        if (!overlay) {
-          // Cria a camada de sobreposição
-          overlay = document.createElement('div');
-          overlay.id = 'atividade-metadata-overlay';
-          overlay.style.position = 'absolute';
-          overlay.style.top = '0';
-          overlay.style.left = '0';
-          overlay.style.width = '100%';
-          overlay.style.height = '100%';
-          overlay.style.display = 'none';
-          overlay.style.zIndex = '10';
-          overlay.style.background = 'rgba(0,0,0,0.6)';
-          overlay.style.color = '#fff';
-          overlay.style.pointerEvents = 'none';
-          overlay.style.borderRadius = 'inherit';
-          overlay.style.display = 'flex';
-          overlay.style.flexDirection = 'column';
-          overlay.style.justifyContent = 'center';
-          overlay.style.alignItems = 'center';
-          overlay.style.textAlign = 'center';
+        
+        createOverlay(wrapper);
+        positionExternalText();
 
-          // Imagem de capa
-          img = document.createElement('img');
-          img.id = 'atividade-cover';
-          img.src = DEFAULT_LOGO;
-          img.alt = 'Album Cover';
-          img.style.width = '80%';
-          img.style.height = '80%';
-          img.style.objectFit = 'cover';
-          img.style.borderRadius = 'inherit';
-
-          // Texto da música/artista
-          text = document.createElement('div');
-          text.id = 'atividade-song-info';
-          text.style.marginTop = '8px';
-          text.style.padding = '0 10px';
-          text.style.fontFamily = 'Orbitron, sans-serif';
-          text.style.fontWeight = 'bold';
-          text.style.wordBreak = 'break-word';
-
-          overlay.appendChild(img);
-          overlay.appendChild(text);
-          wrapper.appendChild(overlay);
-
-          // Escuta clique no player para saber se o usuário iniciou a reprodução
-          attachPlayerClickListener();
-          // Conecta aos metadados
-          subscribeToMetadata();
+        if (state.userInitiatedPlay && (state.currentSong || state.currentArtist)) {
+          updateUI(state.currentSong, state.currentArtist);
         }
+        
+        attachPlayerClickListener();
       } else {
         setTimeout(waitForWrapper, 300);
       }
     }
 
-    /**
-     * Anexa um listener de clique ao container do player. Quando o
-     * usuário clicar em qualquer parte do player, consideramos que o
-     * play foi iniciado manualmente. A partir de então, se a rádio
-     * estiver tocando, as informações serão exibidas.
-     */
+    function createOverlay(wrapper) {
+      // Remove overlay antigo se existir (limpeza extra)
+      const oldOverlay = document.getElementById('atividade-metadata-overlay');
+      if (oldOverlay) oldOverlay.remove();
+
+      state.overlay = document.createElement('div');
+      state.overlay.id = 'atividade-metadata-overlay';
+      state.overlay.style.position = 'absolute';
+      state.overlay.style.top = '0';
+      state.overlay.style.left = '0';
+      state.overlay.style.width = '100%';
+      state.overlay.style.height = '100%';
+      state.overlay.style.zIndex = '10';
+      state.overlay.style.background = 'transparent';
+      state.overlay.style.color = '#fff';
+      state.overlay.style.pointerEvents = 'none';
+      state.overlay.style.borderRadius = 'inherit';
+      state.overlay.style.display = 'none';
+      state.overlay.style.flexDirection = 'column';
+      state.overlay.style.justifyContent = 'center';
+      state.overlay.style.alignItems = 'center';
+      state.overlay.style.textAlign = 'center';
+
+      ensureExternalText();
+
+      state.img = document.createElement('img');
+      state.img.id = 'atividade-cover';
+      state.img.src = DEFAULT_LOGO;
+      state.img.alt = 'Album Cover';
+      state.img.style.width = '100%';
+      state.img.style.height = '100%';
+      state.img.style.objectFit = 'cover';
+      state.img.style.borderRadius = 'inherit';
+
+      state.text = document.createElement('div');
+      state.text.id = 'atividade-song-info';
+      state.text.style.marginTop = '8px';
+      state.text.style.padding = '0 10px';
+      state.text.style.fontFamily = 'Orbitron, sans-serif';
+      state.text.style.fontWeight = 'bold';
+      state.text.style.wordBreak = 'break-word';
+
+      state.overlay.appendChild(state.img);
+      state.overlay.appendChild(state.text);
+      wrapper.appendChild(state.overlay);
+    }
+
     function attachPlayerClickListener() {
       const player = document.getElementById('player');
-      if (!player) return;
+      if (!player || state.playerClickBound) return;
+      state.playerClickBound = true;
       player.addEventListener('click', function(ev) {
-        // Apenas reage a interações do usuário.
         if (!ev.isTrusted) return;
-        // Após o clique, verifica o estado de reprodução para definir
-        // se o usuário iniciou ou pausou a rádio. Usa pequeno atraso
-        // para dar tempo ao Lunaradio de alternar os botões play/pause.
         setTimeout(function() {
-          userInitiatedPlay = isPlaying();
-          if ((currentSong || currentArtist) && userInitiatedPlay) {
-            updateUI(currentSong, currentArtist);
+          state.userInitiatedPlay = isPlaying();
+          if ((state.currentSong || state.currentArtist) && state.userInitiatedPlay) {
+            updateUI(state.currentSong, state.currentArtist);
           } else {
             resetUI();
           }
-        }, 100);
+        }, 200);
       });
     }
 
-    /**
-     * Abre uma EventSource para receber metadados do Zeno FM.
-     */
-    function subscribeToMetadata() {
-      try {
-        const url = 'https://api.zeno.fm/mounts/metadata/subscribe/z2h3tpp2fchvv';
-        const es = new EventSource(url);
-        es.addEventListener('message', function(event) {
-          processData(event.data);
-        });
-        es.addEventListener('error', function(evt) {
-          console.error('Erro na conexão do EventSource:', evt);
-        });
-      } catch (e) {
-        console.error('EventSource não é suportado neste navegador ou falhou ao iniciar:', e);
-      }
-    }
-
-    /**
-     * Processa o JSON recebido e decide se a UI deve ser atualizada ou
-     * revertida. Só mostra informações se o usuário clicou no player e
-     * a rádio estiver tocando.
-     */
-    function processData(data) {
-      try {
-        const parsed = JSON.parse(data);
-        if (parsed && parsed.streamTitle) {
-          let artist = '';
-          let song = '';
-          const title = parsed.streamTitle;
-          if (title.includes(' - ')) {
-            const parts = title.split(' - ');
-            artist = parts[0].trim();
-            song = parts.slice(1).join(' - ').trim();
-          } else {
-            song = title.trim();
-          }
-          const combined = song && artist ? `${song} - ${artist}` : song || artist;
-          if (combined && combined !== lastTitle) {
-            lastTitle = combined;
-            currentSong = song;
-            currentArtist = artist;
-            if (userInitiatedPlay && isPlaying()) {
-              updateUI(song, artist);
-            } else {
-              resetUI();
-            }
-            return;
-          }
-        }
-      } catch (e) {
-        console.error('Erro ao processar metadados:', e);
-      }
-      resetUI();
-    }
-
-    /**
-     * Oculta a sobreposição e restaura o logo padrão.
-     */
     function resetUI() {
-      if (!overlay || !img || !text) return;
-      overlay.style.display = 'none';
-      img.src = DEFAULT_LOGO;
-      text.textContent = 'ATIVIDADE FM';
-      text.style.fontSize = '24px';
+      if (!state.overlay || !state.img || !state.text) return;
+      state.overlay.style.display = 'none';
+      state.img.src = DEFAULT_LOGO;
+      syncSongInfoLayout('');
+      const external = ensureExternalText();
+      if (external) external.style.display = 'none';
     }
 
-    /**
-     * Exibe a sobreposição com a música e artista atuais. Ajusta o tamanho
-     * da fonte conforme os dados disponíveis.
-     */
     function updateUI(song, artist) {
-      if (!overlay || !img || !text) return;
-      overlay.style.display = 'flex';
-      if (song && artist) {
-        text.textContent = `${song} - ${artist}`;
-        text.style.fontSize = '18px';
-      } else if (song) {
-        text.textContent = song;
-        text.style.fontSize = '18px';
-      } else if (artist) {
-        text.textContent = artist;
-        text.style.fontSize = '18px';
-      } else {
-        text.textContent = 'ATIVIDADE FM';
-        text.style.fontSize = '24px';
-      }
+      if (!state.overlay || !state.img || !state.text) return;
+      state.overlay.style.display = 'flex';
+      const info = (song && artist) ? `${song} - ${artist}` : (song || artist || 'ATIVIDADE FM 103.1FM');
+      syncSongInfoLayout(info);
+
       refreshCover(song, artist);
     }
 
-    /**
-     * Faz uma consulta na API do Deezer via JSONP para buscar a capa do
-     * álbum. Se não encontrar, mantém o logo padrão.
-     */
     function refreshCover(song, artist) {
-      if (!overlay || !img) return;
-      if (!song && !artist) {
-        img.src = DEFAULT_LOGO;
+      if (!state.img) return;
+      
+      // 1. Tenta com o título limpo (mantendo números internos)
+      const cleanQuery = cleanTitleForSearch(artist, song);
+      if (!cleanQuery) {
+        state.img.src = DEFAULT_LOGO;
         return;
       }
-      const query = ((artist || '') + ' ' + (song || '')).trim();
-      if (!query) {
-        img.src = DEFAULT_LOGO;
-        return;
-      }
-      const callbackName = 'atividadeCoverCallback_' + Math.random().toString(36).substring(2) + '_' + Date.now();
-      window[callbackName] = function(data) {
-        try {
-          let cover = '';
-          if (data && data.data && data.data.length > 0) {
-            const album = data.data[0].album || {};
-            cover = album.cover_xl || album.cover_big || album.cover_medium || album.cover;
-          }
-          if (cover) {
-            img.src = cover;
+
+      searchDeezer(cleanQuery, function(cover) {
+        if (cover) {
+          state.img.src = cover;
+        } else {
+          // 2. Se não achou, tenta apenas o nome do artista (fallback para mostrar a foto do artista se a música for muito rara)
+          if (artist) {
+            searchDeezer(artist.trim(), function(artistCover) {
+              state.img.src = artistCover || DEFAULT_LOGO;
+            });
           } else {
-            img.src = DEFAULT_LOGO;
+            state.img.src = DEFAULT_LOGO;
           }
-        } finally {
-          cleanup();
         }
+      });
+    }
+
+    function searchDeezer(query, callback) {
+      const callbackName = 'deezer_cb_' + Math.random().toString(36).substring(2, 10);
+      window[callbackName] = function(data) {
+        let cover = null;
+        if (data && data.data && data.data.length > 0) {
+          // Tenta pegar a capa do álbum primeiro
+          const firstResult = data.data[0];
+          if (firstResult.album && firstResult.album.cover_xl) {
+            cover = firstResult.album.cover_xl || firstResult.album.cover_big || firstResult.album.cover_medium;
+          } else if (firstResult.artist && firstResult.artist.picture_xl) {
+            // Se não tiver álbum, tenta a foto do artista
+            cover = firstResult.artist.picture_xl || firstResult.artist.picture_big;
+          }
+        }
+        callback(cover);
+        cleanup();
       };
-      function cleanup() {
-        try {
-          delete window[callbackName];
-        } catch (e) {
-          window[callbackName] = undefined;
-        }
-        if (script && script.parentNode) {
-          script.parentNode.removeChild(script);
-        }
-      }
+
       const script = document.createElement('script');
-      script.src = 'https://api.deezer.com/search?q=' + encodeURIComponent(query) + '&output=jsonp&callback=' + callbackName;
+      script.id = callbackName;
+      script.src = `https://api.deezer.com/search?q=${encodeURIComponent(query)}&output=jsonp&callback=${callbackName}`;
+      
+      function cleanup() {
+        if (script.parentNode) script.parentNode.removeChild(script);
+        delete window[callbackName];
+      }
+
       script.onerror = function() {
-        img.src = DEFAULT_LOGO;
+        callback(null);
         cleanup();
       };
       document.body.appendChild(script);
+      
       setTimeout(function() {
         if (window[callbackName]) {
-          img.src = DEFAULT_LOGO;
+          callback(null);
           cleanup();
         }
       }, 5000);
     }
 
-    // Inicia o processo
+    if (!state.layoutListenersBound) {
+      window.addEventListener('resize', function() {
+        positionExternalText();
+        setTimeout(positionExternalText, 120);
+      });
+      window.addEventListener('orientationchange', function() {
+        setTimeout(positionExternalText, 300);
+        setTimeout(positionExternalText, 650);
+      });
+      state.layoutListenersBound = true;
+    }
+
     waitForWrapper();
   }
 
+  function subscribeToMetadata() {
+    try {
+      const url = 'https://api.zeno.fm/mounts/metadata/subscribe/z2h3tpp2fchvv';
+      const es = new EventSource(url);
+      es.onmessage = function(event) {
+        try {
+          const parsed = JSON.parse(event.data);
+          if (parsed && parsed.streamTitle) {
+            const title = parsed.streamTitle;
+            if (title !== state.lastTitle) {
+              state.lastTitle = title;
+              let artist = '', song = '';
+              if (title.includes(' - ')) {
+                const parts = title.split(' - ');
+                artist = parts[0].trim();
+                song = parts.slice(1).join(' - ').trim();
+              } else {
+                song = title.trim();
+              }
+              state.currentSong = song;
+              state.currentArtist = artist;
+              
+              if (state.userInitiatedPlay) {
+                updateUI_External(song, artist);
+              }
+            }
+          }
+        } catch (e) {}
+      };
+    } catch (e) {}
+  }
+
+  function updateUI_External(song, artist) {
+    const overlay = document.getElementById('atividade-metadata-overlay');
+    const img = document.getElementById('atividade-cover');
+    const text = document.getElementById('atividade-song-info');
+    if (overlay && img && text) {
+      overlay.style.display = 'flex';
+      const info = (song && artist) ? `${song} - ${artist}` : (song || artist || 'ATIVIDADE FM 103.1FM');
+      syncSongInfoLayout(info);
+
+      const cleanQuery = cleanTitleForSearch(artist, song);
+      const searchDeezerLocal = function(q, cb) {
+        const cbName = 'dz_ext_' + Math.random().toString(36).substring(2, 10);
+        window[cbName] = function(d) {
+          let c = null;
+          if (d && d.data && d.data.length > 0) {
+            const res = d.data[0];
+            c = (res.album && res.album.cover_xl) ? res.album.cover_xl : (res.artist ? res.artist.picture_xl : null);
+          }
+          cb(c);
+          const s = document.getElementById(cbName);
+          if (s) s.remove();
+          delete window[cbName];
+        };
+        const s = document.createElement('script');
+        s.id = cbName;
+        s.src = `https://api.deezer.com/search?q=${encodeURIComponent(q)}&output=jsonp&callback=${cbName}`;
+        document.body.appendChild(s);
+      };
+
+      searchDeezerLocal(cleanQuery, function(c) {
+        if (c) img.src = c;
+        else {
+          if (artist) {
+            searchDeezerLocal(artist.trim(), function(c2) { img.src = c2 || DEFAULT_LOGO; });
+          } else img.src = DEFAULT_LOGO;
+        }
+      });
+    }
+  }
+
+  window.addEventListener('lunaradio-reinitialized', function(e) {
+    state.userInitiatedPlay = e.detail.wasPlaying || state.userInitiatedPlay;
+    init();
+    setTimeout(positionExternalText, 400);
+  });
+
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
+    document.addEventListener('DOMContentLoaded', function() {
+      init();
+      subscribeToMetadata();
+    });
   } else {
     init();
+    subscribeToMetadata();
   }
 })();

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="id">
+<html lang="pt-BR">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
@@ -19,7 +19,7 @@
 <script src="https://live.mbahnunungonline.net/dist/js/jquery-3.2.1.min.js"></script>
 <script src="https://live.mbahnunungonline.net/dist/js/lunaradio-sincors.js"></script>
 <style>
-html,body{font-family:"Open Sans",sans-serif;height:100%;margin:0;display:flex;flex-direction:column;color:#272829}
+html,body{font-family:"Open Sans",sans-serif;height:100%;margin:0;display:flex;flex-direction:column;color:#272829;overflow:hidden;background:#000;}
 a{text-decoration:none;color:rgba(255,255,255,1)}
 a:hover{color:rgba(255,255,255,1);text-decoration:none}
 
@@ -27,9 +27,8 @@ a:hover{color:rgba(255,255,255,1);text-decoration:none}
     position:fixed;
     top:0;
     left:0;
-    z-index:100;
+    z-index:1000;
     transition:all .5s;
-    overflow-y:auto;
     background:rgba(255,255,255,0);
     padding:20px 20px 0
 }
@@ -49,20 +48,18 @@ a:hover{color:rgba(255,255,255,1);text-decoration:none}
     height:46px;
     width:100%;
     overflow:hidden;
-    transition:.3s
 }
 .nav-menu a i{font-size:16px}
 .nav-menu a span{padding:0 5px 0 7px;color:#000}
 .nav-menu li:hover > a{color:blue;background:#00cc45}
 .nav-menu li:hover > a span{color:#fff}
 
-/* botão padrão */
 .mobile-nav-toggle{
     position:fixed;
     top:15px;
     left:15px;
     right:auto;
-    z-index:101;
+    z-index:1001;
     border:0;
     background:none;
     font-size:24px;
@@ -74,7 +71,6 @@ a:hover{color:rgba(255,255,255,1);text-decoration:none}
 }
 .mobile-nav-toggle i{color:#fff}
 
-/* quando abrir o menu, botão vai para a direita */
 .mobile-nav-active{
     overflow:hidden
 }
@@ -90,7 +86,24 @@ a:hover{color:rgba(255,255,255,1);text-decoration:none}
     color:#fff
 }
 
+#main-wrapper {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    width: 100%;
+    height: 100%;
+}
+
+#player-container {
+    flex: 1;
+    position: relative;
+    width: 100%;
+    background: #000 url(https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEgKnLmCvLTUZxPyFSyVJDn8asNtV4v3aUG7AkdGEHtN_ppUiZOgWrwxUvx-49QMSvtZvdxz5cYBo_Ba61E2MFwFXXtiq1w9s3WVXFIQZfhwEG5_SsfDnB9xWcmRlqDcOzjktkQV5aNgYa6oJfmZsHudagGLG4VBTQPUWlbBlDVe2E_SJNJyctQknvsG-wkO/s1600/0CoFaAT.jpg) bottom / cover no-repeat;
+}
+
 #player{margin:0 auto;width:100%;height:100%}
+
 .background_hora{
     width:196px;
     height:46px;
@@ -98,7 +111,8 @@ a:hover{color:rgba(255,255,255,1);text-decoration:none}
     position:absolute;
     right:20px;
     top:18px;
-    border-radius:50px
+    border-radius:50px;
+    z-index: 10;
 }
 #relogio{
     margin:0;
@@ -111,47 +125,42 @@ a:hover{color:rgba(255,255,255,1);text-decoration:none}
     font-family:"Poppins",sans-serif;
     color:red
 }
-.back-to-top{
-    position:fixed;
-    display:none;
-    width:40px;
-    height:40px;
-    border-radius:50px;
-    right:15px;
-    bottom:15px;
-    background:#3a0d5c;
-    color:#fff;
-    transition:display .5s ease-in-out;
-    z-index:99999
-}
-.back-to-top i{
-    font-size:24px;
-    position:absolute;
-    top:7px;
-    left:8px
-}
-.back-to-top:hover{
-    color:#fff;
-    background:#0678e3;
-    transition:background .2s ease-in-out
-}
 
-/* Diminuir um pouco o tamanho da fonte do nome da rádio (ATIVIDADE FM)
-   exibido pelo Lunaradio. O plugin define o tamanho via atributo style
-   em #playertextradioname e na classe .playertextradionamespan. Aqui
-   usamos em unidades relativas (em) e !important para sobrepor o valor
-   padrão, reduzindo a fonte para 85% do tamanho original. */
 #player #playertextradioname,
 #player .playertextradionamespan {
     font-size: 1.70em !important;
 }
 
-/* desktop/tablet grande: menu normal, sem botão */
+#player #atividade-song-info-external {
+    position: absolute !important;
+    display: none;
+    margin: 0 !important;
+    padding: 0 6px !important;
+    color: #ffffff !important;
+    font-family: Orbitron, sans-serif !important;
+    font-weight: 700 !important;
+    line-height: 1.05 !important;
+    white-space: nowrap !important;
+    text-shadow: 0 1px 2px rgba(0,0,0,.85), 0 0 6px rgba(0,0,0,.45) !important;
+    pointer-events: none !important;
+    overflow: visible !important;
+    z-index: 9999 !important;
+}
+
+footer {
+    background-color: #222;
+    color: #fff;
+    font-family: Orbitron;
+    text-align: center;
+    padding: 20px;
+    z-index: 100;
+}
+
+/* DESKTOP / TABLET */
 @media (min-width: 901px){
     .mobile-nav-toggle{
         display:none
     }
-
     #header{
         left:0;
         width:auto;
@@ -159,61 +168,448 @@ a:hover{color:rgba(255,255,255,1);text-decoration:none}
         border-right:none;
         padding:20px 20px 0
     }
+    body div#player div#playertextradioname {
+        z-index: 34 !important;
+        margin-top: -26px !important;
+    }
+    body div#player #atividade-song-info-external {
+        text-align: center !important;
+    }
 }
 
-/* celular: só ativa depois que o relógio some */
+/* MOBILE GENERAL */
 @media (max-width: 900px){
     #header{
         width:auto;
         background:#fff;
         border-right:1px solid #e6e9ec;
         left:-300px;
-        padding:20px 30px 100vh 10px
+        padding:20px 30px 100vh 10px;
+        z-index: 1000;
     }
-
-    #player{
-        width:100%;
-        height:100%
-    }
-
-    .background_hora{
+    .background_hora, #relogio{
         display:none
     }
+}
 
-    #relogio{
-        display:none
+
+@media (max-width: 900px) and (orientation: portrait) {
+    body div#player div#playertextradioname {
+        font-size: 1.38em !important;
+        width: calc(100% - 28px) !important;
+        max-width: calc(100% - 28px) !important;
+        left: 50% !important;
+        transform: translateX(-50%) !important;
+        text-align: center !important;
+        z-index: 34 !important;
+        margin-top: -28px !important;
+    }
+
+    body div#player #atividade-song-info-external {
+        left: 14px !important;
+        width: calc(100% - 28px) !important;
+        text-align: center !important;
+    }
+}
+
+/* MOBILE LANDSCAPE SPECIFIC FIXES */
+@media (max-width: 900px) and (orientation: landscape) {
+    #player-container {
+        height: calc(100vh - 60px); 
+    }
+    
+    /* Reposicionar Capa/Logo para a Esquerda */
+    body div#player div#playercoverwrapper {
+        top: 10px !important;
+        left: 55px !important;
+        bottom: auto !important;
+        width: 180px !important;
+        height: 180px !important;
+        aspect-ratio: 1/1 !important;
+        transform: none !important;
+        margin: 0 !important;
+        position: absolute !important;
+        max-width: 254px !important;
+        max-height: 254px !important;
+        overflow: hidden !important;
+    }
+
+    /* Ajustar Nome da Rádio */
+    body div#player div#playertextradioname {
+        top: 12.6% !important;
+        left: 48% !important;
+        transform: translateY(-50%) !important;
+        text-align: left !important;
+        width: auto !important;
+        max-width: calc(100% - 52%) !important;
+        font-size: 1.14em !important;
+        white-space: nowrap !important;
+        position: absolute !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        height: auto !important;
+        line-height: 1.0 !important;
+        z-index: 34 !important;
+    }
+
+    body div#player #atividade-song-info-external {
+        left: 48% !important;
+        top: 18.6% !important;
+        width: 44% !important;
+        text-align: left !important;
+    }
+
+    /* Barra de Volume Horizontal */
+    body div#player {
+        --land-vol-top: 45%;
+        --land-vol-left: 45%;
+        --land-vol-width: 45%;
+        --land-vol-right: calc(100% - (var(--land-vol-left) + var(--land-vol-width)));
+        --land-vol-controls-top: calc(var(--land-vol-top) + 24px);
+    }
+
+    body div#player div#playervolumewrapper {
+        top: var(--land-vol-top) !important;
+        left: var(--land-vol-left) !important;
+        width: var(--land-vol-width) !important;
+        height: 10px !important;
+        transform: none !important;
+        position: absolute !important;
+        background: transparent !important;
+        z-index: 30 !important;
+        overflow: hidden !important;
+        border-radius: 999px !important;
+    }
+
+    body div#player div#playervolumebackground {
+        position: absolute !important;
+        top: 50% !important;
+        left: 0 !important;
+        width: 100% !important;
+        height: 4px !important;
+        transform: translateY(-50%) !important;
+        background: #ffffff !important;
+        z-index: 31 !important;
+        border-radius: 999px !important;
+        overflow: hidden !important;
+    }
+
+    body div#player div#playervolumefill {
+        position: absolute !important;
+        top: 50% !important;
+        left: 0 !important;
+        height: 4px !important;
+        transform: translateY(-50%) !important;
+        background: #000000 !important;
+        z-index: 32 !important;
+        border-radius: 999px !important;
+        max-width: 100% !important;
+        overflow: hidden !important;
+    }
+
+    body div#player div#playervolumefill::before,
+    body div#player div#playervolumefill::after {
+        left: auto !important;
+        right: 1px !important;
+        margin-right: 0 !important;
+        max-width: 8px !important;
+        width: 8px !important;
+        height: 8px !important;
+        box-sizing: border-box !important;
+        transform: translateY(-50%) !important;
+    }
+
+    /* No modo paisagem do celular, o VU fica removido */
+    body div#player div#playerbuttonanalyzer {
+        z-index: 20 !important;
+    }
+
+    body div#player div#playeranalyzer,
+    body div#player [id*="analyzer"]:not(#playerbuttonanalyzer),
+    body div#player [class*="analyzer"]:not(#playerbuttonanalyzer),
+    body div#player [id*="visualizer"],
+    body div#player [class*="visualizer"],
+    body div#player canvas,
+    body div#player svg[data-analyzer],
+    body div#player svg[data-visualizer] {
+        display: none !important;
+        opacity: 0 !important;
+        visibility: hidden !important;
+        pointer-events: none !important;
+        width: 0 !important;
+        height: 0 !important;
+        max-width: 0 !important;
+        max-height: 0 !important;
+        overflow: hidden !important;
+    }
+
+    /* Controles de volume iguais ao modo PC */
+    body div#player div#playerbuttonvolumeoff {
+        top: var(--land-vol-controls-top) !important;
+        left: var(--land-vol-left) !important;
+        right: auto !important;
+        transform: none !important;
+        position: absolute !important;
+        margin: 0 !important;
+        z-index: 33 !important;
+    }
+
+    body div#player div#playertextvolumeend {
+        top: calc(var(--land-vol-controls-top) + 1px) !important;
+        left: auto !important;
+        right: calc(var(--land-vol-right) + 68px) !important;
+        transform: none !important;
+        position: absolute !important;
+        width: auto !important;
+        min-width: 52px !important;
+        text-align: right !important;
+        margin: 0 !important;
+        z-index: 33 !important;
+    }
+
+    body div#player div#playerbuttonvolumeon {
+        top: var(--land-vol-controls-top) !important;
+        left: auto !important;
+        right: var(--land-vol-right) !important;
+        transform: none !important;
+        position: absolute !important;
+        margin: 0 !important;
+        z-index: 33 !important;
+    }
+
+    /* Controles Inferiores (Play, Analyzer, Live) */
+    body div#player div#playerpauseplaywrapper {
+        /* Desce apenas o play/pause o mínimo necessário, sem mexer nos demais elementos */
+        top: calc(var(--land-vol-controls-top) + 12px) !important;
+        bottom: auto !important;
+        left: 65% !important;
+        transform: translateX(-50%) !important;
+        position: absolute !important;
+        z-index: 40 !important;
+        min-width: 55px !important;
+        min-height: 55px !important;
+        width: 55px !important;
+        height: 55px !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        flex-shrink: 0 !important;
+    }
+
+    body div#player div#playerbuttonanalyzer {
+        /* Posiciona o botão do analisador (ondas/visualização) levemente acima do play/pause */
+        bottom: 42% !important;
+        left: 57% !important;
+        top: auto !important;
+        transform: translateX(-50%) !important;
+        position: absolute !important;
+        z-index: 30 !important;
+        min-width: 48px !important;
+        min-height: 48px !important;
+    }
+
+    body div#player div#playericonlive {
+        /* Mantém o LIVE na mesma linha do play/pause, porém abaixo da barra/valor de volume */
+        top: calc(var(--land-vol-controls-top) + 12px) !important;
+        bottom: auto !important;
+        left: 78% !important;
+        transform: translateX(-50%) !important;
+        position: absolute !important;
+        z-index: 40 !important;
+        min-width: 50px !important;
+        min-height: 50px !important;
+        width: 50px !important;
+        height: 50px !important;
+        flex-shrink: 0 !important;
+    }
+
+    footer {
+        padding: 10px;
+        font-size: 0.8em;
+    }
+}
+
+/* === Custom Overrides for User Requests === */
+/* Ajustes para modo paisagem em mobile (largura <= 900px) */
+@media (max-width: 900px) and (orientation: landscape) {
+    /* Descer o texto da música/cantor sem tocar a barra de volume */
+    body div#player #atividade-song-info-external {
+        /* Move o texto um pouco para baixo comparado ao valor original de 22% */
+        top: 21.2% !important;
+    }
+
+    /* Aumentar o tamanho dos ícones de volume (mute/unmute) */
+    body div#player div#playerbuttonvolumeoff,
+    body div#player div#playerbuttonvolumeon {
+        /* Define dimensões maiores sem escalar o contêiner */
+        width: 40px !important;
+        height: 40px !important;
+    }
+
+    /* Garante que o ícone interno de volume seja legível */
+    body div#player div#playerbuttonvolumeoff *,
+    body div#player div#playerbuttonvolumeon * {
+        font-size: 26px !important;
+    }
+
+    /* Aumentar o tamanho do número do volume e aproximá-lo do ícone */
+    body div#player div#playertextvolumeend {
+        font-size: 1.2em !important;
+        line-height: 1.2 !important;
+        /* Afasta um pouco mais do ícone unmute sem mexer na barra */
+        right: calc(var(--land-vol-right) + 46px) !important;
+    }
+
+    /* Aproximar o ícone LIVE do botão de play/pause */
+    body div#player div#playericonlive {
+        /* Desce mais um pouco e reduz levemente o LIVE sem mexer na posição horizontal */
+        top: calc(var(--land-vol-controls-top) + 28px) !important;
+        left: 73% !important;
+        min-width: 32px !important;
+        min-height: 32px !important;
+        width: 32px !important;
+        height: 32px !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+    }
+}
+
+/* Ajustes para modo retrato (portrait) em dispositivos móveis */
+@media (max-width: 900px) and (orientation: portrait) {
+    /* Subir levemente o nome da rádio e da música/cantor */
+    body div#player div#playertextradioname {
+        /* Sobe um pouco o nome da rádio para ficar mais perto da foto */
+        margin-top: -30px !important;
+    }
+    body div#player #atividade-song-info-external {
+        /* Sobe a linha música/cantor junto, sem encostar em outros elementos */
+        margin-top: -18px !important;
+    }
+}
+
+/* Ajustes para modo desktop/PC (largura >= 901px) */
+@media (min-width: 901px) {
+    /* Subir levemente o nome da rádio e da música/cantor */
+    body div#player div#playertextradioname {
+        /* Sobe um pouco o nome da rádio no PC para aproximar da foto */
+        margin-top: -38px !important;
+    }
+    body div#player #atividade-song-info-external {
+        /* Sobe um pouco música/cantor no PC mantendo leitura e folga */
+        margin-top: -18px !important;
+    }
+
+    /* Aumentar o tamanho dos ícones de volume no modo desktop/PC
+       e melhorar legibilidade do valor do volume */
+    body div#player div#playerbuttonvolumeoff,
+    body div#player div#playerbuttonvolumeon {
+        width: 40px !important;
+        height: 40px !important;
+        transform: scale(1.4) !important;
+        transform-origin: center center !important;
+    }
+    /* Garante que o ícone interno de volume amplie junto no modo desktop */
+    body div#player div#playerbuttonvolumeoff *,
+    body div#player div#playerbuttonvolumeon * {
+        font-size: 26px !important;
+    }
+    body div#player div#playertextvolumeend {
+        font-size: 1.2em !important;
+        line-height: 1.2 !important;
     }
 }
 </style>
 </head>
 
 <body>
-<div style="width:100%;height:100%;background: #000000 url(https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEgKnLmCvLTUZxPyFSyVJDn8asNtV4v3aUG7AkdGEHtN_ppUiZOgWrwxUvx-49QMSvtZvdxz5cYBo_Ba61E2MFwFXXtiq1w9s3WVXFIQZfhwEG5_SsfDnB9xWcmRlqDcOzjktkQV5aNgYa6oJfmZsHudagGLG4VBTQPUWlbBlDVe2E_SJNJyctQknvsG-wkO/s1600/0CoFaAT.jpg) bottom / cover no-repeat;">
+<div id="main-wrapper">
+    <div id="player-container">
+        <div id="player"></div>
+    </div>
+    <footer>
+        &copy; Copyright 2026 - ATIVIDADE FM
+    </footer>
+</div>
 
-<div id="player"></div>
 <script>
-$("#player").lunaradio({
-radioname: "ATIVIDADE FM", 
-streamurl: "https://stream.zeno.fm/z2h3tpp2fchvv", 
-streamtype: "zeno", 
-icecastmountpoint: "/mbahnunungonline",
-coverimage: "https://i.imgur.com/v3cg03k.jpeg",
-volume:"100", autoplay:"false", 
-shoutcastpath: "/rbtfm?type=https&amp;nocache=377274",
-shoutcastid: "1", 
-onlycoverimage:"false", coverstyle:"square", usevisualizer:"real", visualizertype:"8",
-userinterface:"big", backgroundcolor:"", fontcolor:"#ffffff", hightlightcolor:"#000000", fontname:"Orbitron", googlefont:"Orbitron", fontratio:"0.7", scroll:"true", displayliveicon:"true", metadatatechnic: "corsproxy", ownmetadataurl: "", corsproxy: "https://cors-proxy.elfsight.com/", usestreamcorsproxy: "false", visualizeropacity:"1.0", multicolorvisualizer:"true", color1:"#00FF00", color2:"#ffff00", color3:"#FF1F6F", color4:"#FF1F6F", metadatainterval:"20000", 
-});
+(function () {
+    function isMobileLandscape() {
+        return window.matchMedia('(max-width: 900px) and (orientation: landscape)').matches;
+    }
+
+    function initRadio() {
+        const $player = $("#player");
+        
+        // 1. Tenta capturar o estado atual antes de limpar
+        let wasPlaying = false;
+        const pauseBtn = document.getElementById('playerbuttonpause');
+        if (pauseBtn) {
+            const style = window.getComputedStyle(pauseBtn);
+            wasPlaying = style.display !== 'none' && parseFloat(style.opacity || '0') > 0;
+        }
+
+        // 2. IMPORTANTE: Para evitar múltiplas instâncias de áudio, 
+        // precisamos encontrar e parar qualquer elemento <audio> ou <video> criado pelo plugin anterior.
+        const existingAudios = document.querySelectorAll('audio, video');
+        existingAudios.forEach(el => {
+            el.pause();
+            el.src = "";
+            el.load();
+            el.remove();
+        });
+
+        // 3. Limpa o container e reinicializa
+        $player.empty();
+        $player.lunaradio({
+            radioname: "ATIVIDADE FM 103.1FM",
+            streamurl: "https://stream.zeno.fm/z2h3tpp2fchvv",
+            streamtype: "zeno",
+            icecastmountpoint: "/mbahnunungonline",
+            coverimage: "https://i.imgur.com/v3cg03k.jpeg",
+            volume: "100",
+            autoplay: wasPlaying ? "true" : "false",
+            shoutcastpath: "/rbtfm?type=https&amp;nocache=377274",
+            shoutcastid: "1",
+            onlycoverimage: "false",
+            coverstyle: "square",
+            usevisualizer: isMobileLandscape() ? "false" : "real",
+            visualizertype: "8",
+            userinterface: "big",
+            backgroundcolor: "",
+            fontcolor: "#ffffff",
+            hightlightcolor: "#000000",
+            fontname: "Orbitron",
+            googlefont: "Orbitron",
+            fontratio: "0.9",
+            scroll: "true",
+            displayliveicon: "true",
+            metadatatechnic: "corsproxy",
+            ownmetadataurl: "",
+            corsproxy: "https://cors-proxy.elfsight.com/",
+            usestreamcorsproxy: "false",
+            visualizeropacity: "1.0",
+            multicolorvisualizer: "true",
+            color1: "#00FF00",
+            color2: "#ffff00",
+            color3: "#FF1F6F",
+            color4: "#FF1F6F",
+            metadatainterval: "20000"
+        });
+
+    }
+
+    initRadio();
+})();
 </script>
 
-<!-- Metadata overlay script for ATIVIDADE FM -->
 <script src="atividade_metadata.js"></script>
 
 <button type="button" class="mobile-nav-toggle"><i class="fas fa-bars"></i></button>
 <header id="header">
 <nav class="nav-menu">
 <ul>
-<li><a target="_blank" href="https://api.whatsapp.com/send?phone=6281234701692&text=Hai"><i class="fas fa-bullhorn"></i><span>Anuncie</span></a></li>
+<li><a target="_blank" href="https://api.whatsapp.com/send?phone=55&text=Hai"><i class="fas fa-bullhorn"></i><span>Anuncie</span></a></li>
 <li><a target="_blank" href="https://www.facebook.com/"><i class="fab fa-facebook-square" alt="Facebook"></i>
 <span>Facebook</span></a></li>
 <li><a target="_blank" href="https://www.instagram.com/"><i class="fab fa-instagram-square" alt="Instagram"></i>
@@ -225,95 +621,53 @@ userinterface:"big", backgroundcolor:"", fontcolor:"#ffffff", hightlightcolor:"#
 </nav>
 </header>
 
-
 <div class="background_hora"><div id="relogio">00:00:00</div></div>
+
 <script>
+// Relógio
 (function () {
     const elementoID = document.getElementById('relogio');
     const TIME_API_URL = 'https://time.now/developer/api/timezone/America/Sao_Paulo';
-    let relogioTimer = null;
-    let resincronizaTimer = null;
     let serverOffsetMs = 0;
     let timezoneAtual = 'America/Sao_Paulo';
 
-    function formatar2(n) {
-        return String(n).padStart(2, '0');
-    }
-
     function renderizarHora() {
         const agoraServidor = new Date(Date.now() + serverOffsetMs);
-
         try {
             const partes = new Intl.DateTimeFormat('pt-BR', {
                 timeZone: timezoneAtual,
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit',
+                hour: '2-digit', minute: '2-digit', second: '2-digit',
                 hour12: false
             }).formatToParts(agoraServidor);
-
             const hh = partes.find(p => p.type === 'hour')?.value || '00';
             const mm = partes.find(p => p.type === 'minute')?.value || '00';
             const ss = partes.find(p => p.type === 'second')?.value || '00';
-
             elementoID.textContent = `${hh}:${mm}:${ss}`;
         } catch (erro) {
-            console.error('Erro ao renderizar relógio:', erro);
-            const hh = formatar2(agoraServidor.getHours());
-            const mm = formatar2(agoraServidor.getMinutes());
-            const ss = formatar2(agoraServidor.getSeconds());
-            elementoID.textContent = `${hh}:${mm}:${ss}`;
+            elementoID.textContent = agoraServidor.toLocaleTimeString();
         }
     }
 
     async function sincronizarHora() {
         try {
             const resposta = await fetch(TIME_API_URL, { cache: 'no-store' });
-            if (!resposta.ok) {
-                throw new Error('Falha ao consultar Time.now');
-            }
-
             const dados = await resposta.json();
-
-            if (!dados || !dados.datetime) {
-                throw new Error('Resposta da Time.now sem datetime');
+            if (dados && dados.datetime) {
+                serverOffsetMs = new Date(dados.datetime).getTime() - Date.now();
+                renderizarHora();
             }
-
-            timezoneAtual = dados.timezone || 'America/Sao_Paulo';
-
-            const apiNowMs = new Date(dados.datetime).getTime();
-            serverOffsetMs = apiNowMs - Date.now();
-
-            renderizarHora();
-        } catch (erro) {
-            console.error('Erro ao sincronizar relógio pela Time.now:', erro);
-            renderizarHora();
-        }
+        } catch (erro) {}
     }
 
-    renderizarHora();
+    setInterval(renderizarHora, 1000);
+    setInterval(sincronizarHora, 300000);
     sincronizarHora();
-
-    if (relogioTimer) clearInterval(relogioTimer);
-    relogioTimer = setInterval(renderizarHora, 1000);
-
-    if (resincronizaTimer) clearInterval(resincronizaTimer);
-    resincronizaTimer = setInterval(sincronizarHora, 5 * 60 * 1000);
 })();
-</script>
-</div>
 
-
-<footer style="display:grid;align-content:end">
-        <div style="background-color:#222;color:#fff;font-family:Orbitron;text-align:center;padding:20px">
-            &copy; Copyright 2026 - ATIVIDADE FM</a>
-        </div>
-    </footer>
-
-<script>
+// Menu Mobile
 $(".mobile-nav-toggle").click(function(){
-$("body").toggleClass("mobile-nav-active");
-$(".mobile-nav-toggle i").toggleClass("fa-bars fa-times");
+    $("body").toggleClass("mobile-nav-active");
+    $(".mobile-nav-toggle i").toggleClass("fa-bars fa-times");
 });
 </script>
 </body>
