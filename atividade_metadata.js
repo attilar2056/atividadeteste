@@ -314,7 +314,7 @@
 
       const script = document.createElement('script');
       script.id = callbackName;
-      script.src = `https://api.deezer.com/search?q=${encodeURIComponent(query)}&output=jsonp&callback=${callbackName}`;
+      script.src = `https://api.deezer.com/search?q=${encodeURIComponent(query)}&output=jsonp&callback=${callbackName}&_=${Date.now()}`;
       
       function cleanup() {
         if (script.parentNode) script.parentNode.removeChild(script);
@@ -407,8 +407,22 @@
         };
         const s = document.createElement('script');
         s.id = cbName;
-        s.src = `https://api.deezer.com/search?q=${encodeURIComponent(q)}&output=jsonp&callback=${cbName}`;
+        s.src = `https://api.deezer.com/search?q=${encodeURIComponent(q)}&output=jsonp&callback=${cbName}&_=${Date.now()}`;
+        s.onerror = function() {
+          cb(null);
+          const sx = document.getElementById(cbName);
+          if (sx) sx.remove();
+          delete window[cbName];
+        };
         document.body.appendChild(s);
+        setTimeout(function() {
+          if (window[cbName]) {
+            cb(null);
+            const sx = document.getElementById(cbName);
+            if (sx) sx.remove();
+            delete window[cbName];
+          }
+        }, 5000);
       };
 
       searchDeezerLocal(cleanQuery, function(c) {
