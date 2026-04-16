@@ -8,6 +8,7 @@
 
 (function() {
   const DEFAULT_LOGO = 'https://i.imgur.com/v3cg03k.jpeg';
+  const VOZ_BRASIL_COVER = 'https://i.imgur.com/F0cxBQ9.png';
   
   // Estado global persistente dentro do closure para sobreviver a reinicializações do player
   let state = {
@@ -20,7 +21,10 @@
     currentArtist: '',
     userInitiatedPlay: false,
     layoutListenersBound: false,
-    playerClickBound: false
+    playerClickBound: false,
+    specialMode: (window.__atividadeCurrentStreamMode || 'zeno'),
+    lastZenoSong: '',
+    lastZenoArtist: ''
   };
 
   /**
@@ -139,6 +143,10 @@
     fitTextToWidth(el, maxPx, minPx);
   }
 
+  function isVoiceBrasilMode() {
+    return state.specialMode === 'voz';
+  }
+
   function applyOverlayLayoutMode() {
     if (!state.img || !state.text || !state.overlay) return;
 
@@ -146,6 +154,18 @@
     state.img.style.height = '100%';
     state.overlay.style.justifyContent = 'center';
     state.text.style.display = 'none';
+  }
+
+  function renderVoiceBrasilUI() {
+    const external = ensureExternalText();
+    if (!state.overlay || !state.img || !state.text || !external) return;
+    state.overlay.style.display = 'flex';
+    applyOverlayLayoutMode();
+    state.text.style.display = 'none';
+    state.img.src = VOZ_BRASIL_COVER;
+    external.textContent = 'A voz do Brasil';
+    positionExternalText();
+    external.style.display = 'block';
   }
 
   function syncSongInfoLayout(info) {
@@ -241,8 +261,16 @@
         if (!ev.isTrusted) return;
         setTimeout(function() {
           state.userInitiatedPlay = isPlaying();
-          if ((state.currentSong || state.currentArtist) && state.userInitiatedPlay) {
+          if (!state.userInitiatedPlay) {
+            resetUI();
+            return;
+          }
+          if (isVoiceBrasilMode()) {
+            renderVoiceBrasilUI();
+          } else if (state.currentSong || state.currentArtist) {
             updateUI(state.currentSong, state.currentArtist);
+          } else if (state.lastZenoSong || state.lastZenoArtist) {
+            updateUI(state.lastZenoSong, state.lastZenoArtist);
           } else {
             resetUI();
           }
@@ -261,6 +289,10 @@
 
     function updateUI(song, artist) {
       if (!state.overlay || !state.img || !state.text) return;
+      if (isVoiceBrasilMode()) {
+        renderVoiceBrasilUI();
+        return;
+      }
       state.overlay.style.display = 'flex';
       const info = (song && artist) ? `${song} - ${artist}` : (song || artist || 'ATIVIDADE FM 103.1FM');
       syncSongInfoLayout(info);
@@ -270,6 +302,10 @@
 
     function refreshCover(song, artist) {
       if (!state.img) return;
+      if (isVoiceBrasilMode()) {
+        state.img.src = VOZ_BRASIL_COVER;
+        return;
+      }
       
       // 1. Tenta com o título limpo (mantendo números internos)
       const cleanQuery = cleanTitleForSearch(artist, song);
@@ -358,6 +394,7 @@
         try {
           const parsed = JSON.parse(event.data);
           if (parsed && parsed.streamTitle) {
+            if (isVoiceBrasilMode()) return;
             const title = parsed.streamTitle;
             if (title !== state.lastTitle) {
               state.lastTitle = title;
@@ -371,6 +408,8 @@
               }
               state.currentSong = song;
               state.currentArtist = artist;
+              state.lastZenoSong = song;
+              state.lastZenoArtist = artist;
               
               if (state.userInitiatedPlay) {
                 updateUI_External(song, artist);
@@ -383,6 +422,10 @@
   }
 
   function updateUI_External(song, artist) {
+    if (isVoiceBrasilMode()) {
+      renderVoiceBrasilUI();
+      return;
+    }
     const overlay = document.getElementById('atividade-metadata-overlay');
     const img = document.getElementById('atividade-cover');
     const text = document.getElementById('atividade-song-info');
@@ -436,10 +479,45 @@
     }
   }
 
+
+  window.addEventListener('atividade-stream-mode-change', function(e) {
+    const detail = e && e.detail ? e.detail : {};
+    state.specialMode = detail.mode || 'zeno';
+
+    if (state.specialMode === 'voz') {
+      if (state.userInitiatedPlay) {
+        renderVoiceBrasilUI();
+      } else {
+        const external = ensureExternalText();
+        if (external) external.style.display = 'none';
+      }
+      return;
+    }
+
+    if (state.userInitiatedPlay) {
+      if (state.currentSong || state.currentArtist) {
+        updateUI(state.currentSong, state.currentArtist);
+      } else if (state.lastZenoSong || state.lastZenoArtist) {
+        updateUI(state.lastZenoSong, state.lastZenoArtist);
+      } else {
+        resetUI();
+      }
+    } else {
+      resetUI();
+    }
+  });
+
   window.addEventListener('lunaradio-reinitialized', function(e) {
-    state.userInitiatedPlay = e.detail.wasPlaying || state.userInitiatedPlay;
+    state.userInitiatedPlay = (e && e.detail && typeof e.detail.wasPlaying === 'boolean') ? e.detail.wasPlaying : state.userInitiatedPlay;
+    state.specialMode = (e && e.detail && e.detail.mode) ? e.detail.mode : (window.__atividadeCurrentStreamMode || state.specialMode);
     init();
-    setTimeout(positionExternalText, 400);
+    setTimeout(function() {
+      if (isVoiceBrasilMode() && state.userInitiatedPlay) {
+        renderVoiceBrasilUI();
+      } else {
+        positionExternalText();
+      }
+    }, 400);
   });
 
   if (document.readyState === 'loading') {
