@@ -168,6 +168,17 @@
     external.style.display = 'block';
   }
 
+  function renderIdleLogoUI() {
+    const external = ensureExternalText();
+    if (!state.overlay || !state.img || !state.text || !external) return;
+    state.overlay.style.display = 'flex';
+    applyOverlayLayoutMode();
+    state.text.style.display = 'none';
+    state.img.src = DEFAULT_LOGO;
+    external.textContent = '';
+    external.style.display = 'none';
+  }
+
   function syncSongInfoLayout(info) {
     const external = ensureExternalText();
     if (!state.text || !external) return;
@@ -176,6 +187,90 @@
     state.text.style.display = 'none';
     external.textContent = info || '';
     positionExternalText();
+  }
+
+
+  function resetUI() {
+    if (!state.overlay || !state.img || !state.text) return;
+    syncSongInfoLayout('');
+    renderIdleLogoUI();
+  }
+
+  function searchDeezer(query, callback) {
+    const callbackName = 'deezer_cb_' + Math.random().toString(36).substring(2, 10);
+    window[callbackName] = function(data) {
+      let cover = null;
+      if (data && data.data && data.data.length > 0) {
+        const firstResult = data.data[0];
+        if (firstResult.album && firstResult.album.cover_xl) {
+          cover = firstResult.album.cover_xl || firstResult.album.cover_big || firstResult.album.cover_medium;
+        } else if (firstResult.artist && firstResult.artist.picture_xl) {
+          cover = firstResult.artist.picture_xl || firstResult.artist.picture_big;
+        }
+      }
+      callback(cover);
+      cleanup();
+    };
+
+    const script = document.createElement('script');
+    script.id = callbackName;
+    script.src = `https://api.deezer.com/search?q=${encodeURIComponent(query)}&output=jsonp&callback=${callbackName}&_=${Date.now()}`;
+
+    function cleanup() {
+      if (script.parentNode) script.parentNode.removeChild(script);
+      delete window[callbackName];
+    }
+
+    script.onerror = function() {
+      callback(null);
+      cleanup();
+    };
+    document.body.appendChild(script);
+
+    setTimeout(function() {
+      if (window[callbackName]) {
+        callback(null);
+        cleanup();
+      }
+    }, 5000);
+  }
+
+  function refreshCover(song, artist) {
+    if (!state.img) return;
+    if (isVoiceBrasilMode()) {
+      state.img.src = VOZ_BRASIL_COVER;
+      return;
+    }
+
+    const cleanQuery = cleanTitleForSearch(artist, song);
+    if (!cleanQuery) {
+      state.img.src = DEFAULT_LOGO;
+      return;
+    }
+
+    searchDeezer(cleanQuery, function(cover) {
+      if (cover) {
+        state.img.src = cover;
+      } else if (artist) {
+        searchDeezer(artist.trim(), function(artistCover) {
+          state.img.src = artistCover || DEFAULT_LOGO;
+        });
+      } else {
+        state.img.src = DEFAULT_LOGO;
+      }
+    });
+  }
+
+  function updateUI(song, artist) {
+    if (!state.overlay || !state.img || !state.text) return;
+    if (isVoiceBrasilMode()) {
+      renderVoiceBrasilUI();
+      return;
+    }
+    state.overlay.style.display = 'flex';
+    const info = (song && artist) ? `${song} - ${artist}` : (song || artist || 'ATIVIDADE FM 103.1FM');
+    syncSongInfoLayout(info);
+    refreshCover(song, artist);
   }
 
   function init() {
@@ -198,6 +293,10 @@
 
         if (state.userInitiatedPlay && (state.currentSong || state.currentArtist)) {
           updateUI(state.currentSong, state.currentArtist);
+        } else if (state.userInitiatedPlay && isVoiceBrasilMode()) {
+          renderVoiceBrasilUI();
+        } else {
+          renderIdleLogoUI();
         }
         
         attachPlayerClickListener();
@@ -278,98 +377,6 @@
       });
     }
 
-    function resetUI() {
-      if (!state.overlay || !state.img || !state.text) return;
-      state.overlay.style.display = 'none';
-      state.img.src = DEFAULT_LOGO;
-      syncSongInfoLayout('');
-      const external = ensureExternalText();
-      if (external) external.style.display = 'none';
-    }
-
-    function updateUI(song, artist) {
-      if (!state.overlay || !state.img || !state.text) return;
-      if (isVoiceBrasilMode()) {
-        renderVoiceBrasilUI();
-        return;
-      }
-      state.overlay.style.display = 'flex';
-      const info = (song && artist) ? `${song} - ${artist}` : (song || artist || 'ATIVIDADE FM 103.1FM');
-      syncSongInfoLayout(info);
-
-      refreshCover(song, artist);
-    }
-
-    function refreshCover(song, artist) {
-      if (!state.img) return;
-      if (isVoiceBrasilMode()) {
-        state.img.src = VOZ_BRASIL_COVER;
-        return;
-      }
-      
-      // 1. Tenta com o título limpo (mantendo números internos)
-      const cleanQuery = cleanTitleForSearch(artist, song);
-      if (!cleanQuery) {
-        state.img.src = DEFAULT_LOGO;
-        return;
-      }
-
-      searchDeezer(cleanQuery, function(cover) {
-        if (cover) {
-          state.img.src = cover;
-        } else {
-          // 2. Se não achou, tenta apenas o nome do artista (fallback para mostrar a foto do artista se a música for muito rara)
-          if (artist) {
-            searchDeezer(artist.trim(), function(artistCover) {
-              state.img.src = artistCover || DEFAULT_LOGO;
-            });
-          } else {
-            state.img.src = DEFAULT_LOGO;
-          }
-        }
-      });
-    }
-
-    function searchDeezer(query, callback) {
-      const callbackName = 'deezer_cb_' + Math.random().toString(36).substring(2, 10);
-      window[callbackName] = function(data) {
-        let cover = null;
-        if (data && data.data && data.data.length > 0) {
-          // Tenta pegar a capa do álbum primeiro
-          const firstResult = data.data[0];
-          if (firstResult.album && firstResult.album.cover_xl) {
-            cover = firstResult.album.cover_xl || firstResult.album.cover_big || firstResult.album.cover_medium;
-          } else if (firstResult.artist && firstResult.artist.picture_xl) {
-            // Se não tiver álbum, tenta a foto do artista
-            cover = firstResult.artist.picture_xl || firstResult.artist.picture_big;
-          }
-        }
-        callback(cover);
-        cleanup();
-      };
-
-      const script = document.createElement('script');
-      script.id = callbackName;
-      script.src = `https://api.deezer.com/search?q=${encodeURIComponent(query)}&output=jsonp&callback=${callbackName}&_=${Date.now()}`;
-      
-      function cleanup() {
-        if (script.parentNode) script.parentNode.removeChild(script);
-        delete window[callbackName];
-      }
-
-      script.onerror = function() {
-        callback(null);
-        cleanup();
-      };
-      document.body.appendChild(script);
-      
-      setTimeout(function() {
-        if (window[callbackName]) {
-          callback(null);
-          cleanup();
-        }
-      }, 5000);
-    }
 
     if (!state.layoutListenersBound) {
       window.addEventListener('resize', function() {
@@ -488,8 +495,7 @@
       if (state.userInitiatedPlay) {
         renderVoiceBrasilUI();
       } else {
-        const external = ensureExternalText();
-        if (external) external.style.display = 'none';
+        renderIdleLogoUI();
       }
       return;
     }

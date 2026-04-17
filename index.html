@@ -526,7 +526,7 @@ footer {
 <div id="main-wrapper">
     <div id="player-container">
         <div id="player"></div>
-    </div>
+    </div>z2h3tpp2fchvv
     <footer>
         &copy; Copyright 2026 - ATIVIDADE FM
     </footer>
@@ -534,11 +534,13 @@ footer {
 
 <script>
 (function () {
+    window.resetUI = window.resetUI || function () {};
+
     const TIME_API_URL = 'https://time.now/developer/api/timezone/America/Sao_Paulo';
     const STREAMS = {
         zeno: {
             mode: 'zeno',
-            radioname: 'ATIVIDADE FM 103.1FM',
+            radioname: 'ATIVIDADE FM',
             streamurl: 'https://stream.zeno.fm/z2h3tpp2fchvv',
             streamtype: 'zeno',
             icecastmountpoint: '/mbahnunungonline',
@@ -567,11 +569,10 @@ footer {
     const schedulerState = {
         serverOffsetMs: 0,
         currentMode: null,
-        hiddenPrewarmAudio: null,
-        hiddenPrewarmMode: null,
         syncRunning: false,
         syncReady: false,
-        lastInitToken: 0
+        lastInitToken: 0,
+        switchInProgress: false
     };
 
     function getSyncedNow() {
@@ -608,16 +609,6 @@ footer {
         return isWeekdaySP(parts) && parts.hour === 19 ? 'voz' : 'zeno';
     }
 
-    function getPrewarmMode(parts) {
-        if (isWeekdaySP(parts) && parts.hour === 18 && parts.minute === 59 && parts.second >= 30) {
-            return 'voz';
-        }
-        if (isWeekdaySP(parts) && parts.hour === 19 && parts.minute === 59 && parts.second >= 29) {
-            return 'zeno';
-        }
-        return null;
-    }
-
     async function syncServerTime() {
         if (schedulerState.syncRunning) return;
         schedulerState.syncRunning = true;
@@ -627,16 +618,19 @@ footer {
             if (data && data.datetime) {
                 schedulerState.serverOffsetMs = new Date(data.datetime).getTime() - Date.now();
                 schedulerState.syncReady = true;
+            } else {
+                schedulerState.serverOffsetMs = 0;
             }
         } catch (err) {
             console.warn('[ATIVIDADE] Falha ao sincronizar horário da API:', err);
+            schedulerState.serverOffsetMs = 0;
         } finally {
             schedulerState.syncRunning = false;
         }
     }
 
-    function getVisiblePlayerMedia() {
-        return Array.from(document.querySelectorAll('audio:not([data-prewarm="true"]), video:not([data-prewarm="true"])'));
+    function getDocumentMedia() {
+        return Array.from(document.querySelectorAll('audio, video'));
     }
 
     function detectWasPlaying() {
@@ -647,66 +641,68 @@ footer {
                 return true;
             }
         }
-        return getVisiblePlayerMedia().some(el => !el.paused && !el.ended);
+        return getDocumentMedia().some(el => !el.paused && !el.ended);
     }
 
-    function stopAndRemoveVisibleMedia() {
-        getVisiblePlayerMedia().forEach(el => {
-            try { el.pause(); } catch (e) {}
-            try { el.removeAttribute('src'); } catch (e) {}
-            try { el.load(); } catch (e) {}
+    function hardStopMediaElement(el) {
+        try { el.muted = true; } catch (e) {}
+        try { el.volume = 0; } catch (e) {}
+        try { el.pause(); } catch (e) {}
+        try { el.removeAttribute('src'); } catch (e) {}
+        try { el.src = ''; } catch (e) {}
+        try { el.srcObject = null; } catch (e) {}
+        try {
+            Array.from(el.querySelectorAll('source')).forEach(source => {
+                try { source.removeAttribute('src'); } catch (e) {}
+                try { source.src = ''; } catch (e) {}
+            });
+        } catch (e) {}
+        try { el.load(); } catch (e) {}
+    }
+
+    function clickPauseIfVisible() {
+        const btn = document.getElementById('playerbuttonpause');
+        if (!btn) return;
+        try {
+            const style = window.getComputedStyle(btn);
+            if (style.display !== 'none' && style.visibility !== 'hidden' && parseFloat(style.opacity || '1') > 0) {
+                btn.click();
+            }
+        } catch (e) {}
+    }
+
+    async function stopCurrentPlaybackHard() {
+        clickPauseIfVisible();
+        for (let pass = 0; pass < 6; pass++) {
+            getDocumentMedia().forEach(hardStopMediaElement);
+            await new Promise(resolve => setTimeout(resolve, 140));
+        }
+        getDocumentMedia().forEach(el => {
             try { el.remove(); } catch (e) {}
         });
+        await new Promise(resolve => setTimeout(resolve, 180));
     }
 
-    function stopPrewarmAudio() {
-        const prewarm = schedulerState.hiddenPrewarmAudio;
-        if (prewarm) {
-            try { prewarm.pause(); } catch (e) {}
-            try { prewarm.removeAttribute('src'); } catch (e) {}
-            try { prewarm.load(); } catch (e) {}
-            try { prewarm.remove(); } catch (e) {}
-        }
-        schedulerState.hiddenPrewarmAudio = null;
-        schedulerState.hiddenPrewarmMode = null;
+
+    function recreatePlayerMount() {
+        const current = document.getElementById('player');
+        if (!current || !current.parentNode) return current;
+        const replacement = document.createElement('div');
+        replacement.id = 'player';
+        replacement.style.margin = '0 auto';
+        replacement.style.width = '100%';
+        replacement.style.height = '100%';
+        current.parentNode.replaceChild(replacement, current);
+        return replacement;
     }
 
-    function prewarmStream(mode) {
-        if (!mode || mode === schedulerState.currentMode) {
-            stopPrewarmAudio();
-            return;
-        }
-        if (schedulerState.hiddenPrewarmMode === mode && schedulerState.hiddenPrewarmAudio) {
-            return;
-        }
-
-        stopPrewarmAudio();
-
-        const config = STREAMS[mode];
-        if (!config) return;
-
-        const prewarm = document.createElement('audio');
-        prewarm.setAttribute('data-prewarm', 'true');
-        prewarm.preload = 'auto';
-        prewarm.muted = true;
-        prewarm.volume = 0;
-        prewarm.autoplay = true;
-        prewarm.playsInline = true;
-        prewarm.style.display = 'none';
-        prewarm.crossOrigin = 'anonymous';
-        prewarm.src = config.streamurl;
-        document.body.appendChild(prewarm);
-
-        try { prewarm.load(); } catch (e) {}
-        const playPromise = prewarm.play();
-        if (playPromise && typeof playPromise.catch === 'function') {
-            playPromise.catch(err => {
-                console.warn('[ATIVIDADE] Pré-carregamento silencioso falhou:', mode, err);
-            });
-        }
-
-        schedulerState.hiddenPrewarmAudio = prewarm;
-        schedulerState.hiddenPrewarmMode = mode;
+    function removePlayerArtifacts() {
+        document.querySelectorAll('#atividade-metadata-overlay, #atividade-song-info-external').forEach(el => {
+            try { el.remove(); } catch (e) {}
+        });
+        document.querySelectorAll('#player iframe, #player object, #player embed, #player source').forEach(el => {
+            try { el.remove(); } catch (e) {}
+        });
     }
 
     function buildLunaOptions(config, autoplay) {
@@ -753,61 +749,64 @@ footer {
         return options;
     }
 
-    function initRadio(modeToLoad) {
+    async function initRadio(modeToLoad) {
         const mode = modeToLoad || getDesiredMode(getSaoPauloParts(getSyncedNow()));
         const config = STREAMS[mode] || STREAMS.zeno;
-        const $player = $('#player');
         const wasPlaying = detectWasPlaying();
         const token = ++schedulerState.lastInitToken;
 
-        stopAndRemoveVisibleMedia();
-        $player.empty();
-        $player.lunaradio(buildLunaOptions(config, wasPlaying));
+        if (schedulerState.switchInProgress) return;
+        schedulerState.switchInProgress = true;
 
-        schedulerState.currentMode = mode;
-        if (schedulerState.hiddenPrewarmMode === mode) {
-            stopPrewarmAudio();
-        }
+        try {
+            await stopCurrentPlaybackHard();
+            removePlayerArtifacts();
+            const playerMount = recreatePlayerMount();
+            await new Promise(resolve => setTimeout(resolve, 180));
+            if (!playerMount) return;
 
-        window.__atividadeCurrentStreamMode = mode;
-        window.__atividadeCurrentStreamConfig = config;
+            $(playerMount).empty();
+            $(playerMount).lunaradio(buildLunaOptions(config, wasPlaying));
 
-        window.dispatchEvent(new CustomEvent('atividade-stream-mode-change', {
-            detail: {
-                mode: mode,
-                isVoz: mode === 'voz',
-                streamurl: config.streamurl,
-                coverimage: config.coverimage,
-                forcedTitle: mode === 'voz' ? 'A voz do Brasil' : ''
-            }
-        }));
+            schedulerState.currentMode = mode;
+            window.__atividadeCurrentStreamMode = mode;
+            window.__atividadeCurrentStreamConfig = config;
 
-        setTimeout(function() {
-            if (token !== schedulerState.lastInitToken) return;
-            window.dispatchEvent(new CustomEvent('lunaradio-reinitialized', {
+            window.dispatchEvent(new CustomEvent('atividade-stream-mode-change', {
                 detail: {
-                    wasPlaying: wasPlaying,
-                    mode: mode
+                    mode: mode,
+                    isVoz: mode === 'voz',
+                    streamurl: config.streamurl,
+                    coverimage: config.coverimage,
+                    forcedTitle: mode === 'voz' ? 'A voz do Brasil' : ''
                 }
             }));
-        }, 450);
+
+            setTimeout(function() {
+                if (token !== schedulerState.lastInitToken) return;
+                window.dispatchEvent(new CustomEvent('lunaradio-reinitialized', {
+                    detail: {
+                        wasPlaying: wasPlaying,
+                        mode: mode
+                    }
+                }));
+            }, 500);
+        } finally {
+            setTimeout(() => {
+                schedulerState.switchInProgress = false;
+            }, 650);
+        }
     }
 
     function evaluateScheduler() {
+        if (schedulerState.switchInProgress) return;
         const parts = getSaoPauloParts(getSyncedNow());
         const desiredMode = getDesiredMode(parts);
-        const prewarmMode = getPrewarmMode(parts);
 
         if (!schedulerState.currentMode) {
             initRadio(desiredMode);
         } else if (desiredMode !== schedulerState.currentMode) {
             initRadio(desiredMode);
-        }
-
-        if (prewarmMode && prewarmMode !== desiredMode) {
-            prewarmStream(prewarmMode);
-        } else {
-            stopPrewarmAudio();
         }
     }
 
@@ -822,13 +821,13 @@ footer {
 })();
 </script>
 
-<script src="atividade_metadata.js?v=20260416-voz-brasil-1"></script>
+<script src="atividade_metadata.js?v=20260416-voz-brasil-2"></script>
 
 <button type="button" class="mobile-nav-toggle"><i class="fas fa-bars"></i></button>
 <header id="header">
 <nav class="nav-menu">
 <ul>
-<li><a target="_blank" href="https://api.whatsapp.com/send?phone=6281234701692&text=Hai"><i class="fas fa-bullhorn"></i><span>Anuncie</span></a></li>
+<li><a target="_blank" href="https://api.whatsapp.com/send?phone=5521996299454&text=Atividade"><i class="fas fa-bullhorn"></i><span>Anuncie</span></a></li>
 <li><a target="_blank" href="https://www.facebook.com/"><i class="fab fa-facebook-square" alt="Facebook"></i>
 <span>Facebook</span></a></li>
 <li><a target="_blank" href="https://www.instagram.com/"><i class="fab fa-instagram-square" alt="Instagram"></i>
@@ -850,8 +849,12 @@ footer {
     let serverOffsetMs = 0;
     let timezoneAtual = 'America/Sao_Paulo';
 
+    function getNow() {
+        return new Date(Date.now() + serverOffsetMs);
+    }
+
     function renderizarHora() {
-        const agoraServidor = new Date(Date.now() + serverOffsetMs);
+        const agoraServidor = getNow();
         try {
             const partes = new Intl.DateTimeFormat('pt-BR', {
                 timeZone: timezoneAtual,
@@ -873,9 +876,14 @@ footer {
             const dados = await resposta.json();
             if (dados && dados.datetime) {
                 serverOffsetMs = new Date(dados.datetime).getTime() - Date.now();
-                renderizarHora();
+            } else {
+                serverOffsetMs = 0;
             }
-        } catch (erro) {}
+            renderizarHora();
+        } catch (erro) {
+            serverOffsetMs = 0;
+            renderizarHora();
+        }
     }
 
     setInterval(renderizarHora, 1000);
