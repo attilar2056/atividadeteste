@@ -350,40 +350,28 @@ footer {
         z-index: 36 !important;
     }
 
-    /* Reativando o VU no modo paisagem e posicionando atrás da barra de volume */
+    /* No modo paisagem do celular, o VU continua existindo, porém fica apenas oculto */
     body div#player div#playerbuttonanalyzer {
-        display: none !important; /* Ocultar o botão do visualizador no modo paisagem */
+        z-index: 20 !important;
+    }
+
+    body div#player div#playeranalyzer,
+    body div#player [id*="analyzer"]:not(#playerbuttonanalyzer),
+    body div#player [class*="analyzer"]:not(#playerbuttonanalyzer),
+    body div#player [id*="visualizer"],
+    body div#player [class*="visualizer"],
+    body div#player canvas,
+    body div#player svg[data-analyzer],
+    body div#player svg[data-visualizer] {
+        display: none !important;
         opacity: 0 !important;
         visibility: hidden !important;
         pointer-events: none !important;
-    }
-
-    body div#player canvas#playercanvas {
-        display: block !important;
-        opacity: 1 !important;
-        visibility: visible !important;
-        pointer-events: none !important;
-        position: absolute !important;
-        top: calc(var(--land-vol-top) - 291px) !important; /* Ajustado para centralizar a nova altura de 250px */
-        left: calc(var(--land-vol-left) - 17px) !important;
-        width: var(--land-vol-width) !important;
-        height: 450px !important; /* Aumentado para ser 4x mais largo/alto que o anterior (de ~60px para 450px) */
-        z-index: 25 !important; /* Atrás da barra de volume (z-index 30+) */
-        transform: none !important;
-    }
-
-    /* Manter outros elementos de análise ocultos se necessário, mas liberar o canvas principal */
-    body div#player div#playeranalyzer {
-        display: block !important;
-        opacity: 1 !important;
-        visibility: visible !important;
-        position: absolute !important;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        pointer-events: none !important;
-        z-index: 24 !important;
+        width: 0 !important;
+        height: 0 !important;
+        max-width: 0 !important;
+        max-height: 0 !important;
+        overflow: hidden !important;
     }
 
     /* Controles de volume iguais ao modo PC */
@@ -569,7 +557,7 @@ footer {
 <div id="main-wrapper">
     <div id="player-container">
         <div id="player"></div>
-    </div>
+    </div>z2h3tpp2fchvv
     <footer>
         &copy; Copyright 2026 - ATIVIDADE FM
     </footer>
@@ -864,7 +852,7 @@ footer {
 })();
 </script>
 
-<script src="atividade_metadata_novo.js"></script>
+<script src="P260417-landscape-volume-grab-icon-fix-3"></script>
 
 <button type="button" class="mobile-nav-toggle"><i class="fas fa-bars"></i></button>
 <header id="header">
