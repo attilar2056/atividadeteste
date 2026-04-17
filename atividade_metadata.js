@@ -9,6 +9,24 @@
 (function() {
   const DEFAULT_LOGO = 'https://i.imgur.com/v3cg03k.jpeg';
   const VOZ_BRASIL_COVER = 'https://i.imgur.com/F0cxBQ9.png';
+  const TIME_API_URL = 'https://time.now/developer/api/timezone/America/Sao_Paulo';
+  const PROGRAM_PREVIEW_MS = 15000;
+  const PROGRAM_SCHEDULE = [
+    { name: '1 Hora de Música', image: 'https://i.imgur.com/N9EyeHV.jpeg', days: [1, 2, 3, 4, 5], start: '03:00', end: '05:59' },
+    { name: '1 Hora de Música', image: 'https://i.imgur.com/N9EyeHV.jpeg', days: [1, 2, 3, 4, 5], start: '11:00', end: '12:59' },
+    { name: '1 Hora de Música', image: 'https://i.imgur.com/N9EyeHV.jpeg', days: [1, 2, 3, 4, 5], start: '20:00', end: '20:59' },
+    { name: '1 Hora de Música', image: 'https://i.imgur.com/N9EyeHV.jpeg', days: [1, 2, 3, 4, 5], start: '22:00', end: '23:59' },
+    { name: '1 Hora de Música', image: 'https://i.imgur.com/N9EyeHV.jpeg', days: [6], start: '03:00', end: '23:59' },
+    { name: '1 Hora de Música', image: 'https://i.imgur.com/N9EyeHV.jpeg', days: [0], start: '00:00', end: '23:59' },
+    { name: 'Insônia', image: 'https://i.imgur.com/lA7Sl3A.jpeg', days: [1, 2, 3, 4, 5, 6], start: '00:00', end: '02:59' },
+    { name: 'Sucessos da Manhã', image: 'https://i.imgur.com/a94mDWH.jpeg', days: [1, 2, 3, 4, 5], start: '07:00', end: '08:59' },
+    { name: 'Top Hits – 1ª edição', image: 'https://i.imgur.com/BUHqEHd.jpeg', days: [1, 2, 3, 4, 5], start: '09:00', end: '10:59' },
+    { name: 'Top Hits', image: 'https://i.imgur.com/cZz1d6k.jpeg', days: [1, 2, 3, 4, 5], start: '13:00', end: '15:59' },
+    { name: 'Top Hits – 2ª edição', image: 'https://i.imgur.com/lEoVkDJ.jpeg', days: [1, 2, 3, 4, 5], start: '16:00', end: '17:59' },
+    { name: 'Clube do Charme', image: 'https://i.imgur.com/YO93jT4.jpeg', days: [1, 2, 3, 4, 5], start: '18:00', end: '18:59' },
+    { name: 'Momento de Reflexão', image: 'https://i.imgur.com/cNxPEWx.jpeg', days: [1, 2, 3, 4, 5], start: '06:00', end: '06:59' },
+    { name: 'Momento de Reflexão', image: 'https://i.imgur.com/cNxPEWx.jpeg', days: [1, 2, 3, 4, 5], start: '21:00', end: '21:59' }
+  ];
   
   // Estado global persistente dentro do closure para sobreviver a reinicializações do player
   let state = {
@@ -24,7 +42,14 @@
     playerClickBound: false,
     specialMode: (window.__atividadeCurrentStreamMode || 'zeno'),
     lastZenoSong: '',
-    lastZenoArtist: ''
+    lastZenoArtist: '',
+    displayMode: 'idle',
+    programPreviewTimer: null,
+    activeProgramPreviewReason: '',
+    awaitingInitialSongAfterPlay: false,
+    serverOffsetMs: 0,
+    timeSyncRunning: false,
+    timeSyncReady: false
   };
 
   /**
@@ -56,6 +81,87 @@
 
   function isMobilePortraitView() {
     return window.matchMedia('(max-width: 900px) and (orientation: portrait)').matches;
+  }
+
+  function clearProgramPreviewTimer() {
+    if (state.programPreviewTimer) {
+      clearTimeout(state.programPreviewTimer);
+      state.programPreviewTimer = null;
+    }
+    state.activeProgramPreviewReason = '';
+  }
+
+  function parseMinutes(hhmm) {
+    const parts = String(hhmm || '00:00').split(':');
+    const hour = Number(parts[0] || '0');
+    const minute = Number(parts[1] || '0');
+    return (hour * 60) + minute;
+  }
+
+  function getSaoPauloParts(date) {
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Sao_Paulo',
+      weekday: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false
+    });
+    const pieces = formatter.formatToParts(date);
+    const map = {};
+    pieces.forEach(function(piece) {
+      if (piece.type !== 'literal') map[piece.type] = piece.value;
+    });
+
+    const weekdayMap = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
+
+    return {
+      weekdayShort: String(map.weekday || '').toLowerCase(),
+      weekdayIndex: weekdayMap[String(map.weekday || '').toLowerCase()] ?? 0,
+      hour: Number(map.hour || '0'),
+      minute: Number(map.minute || '0'),
+      second: Number(map.second || '0')
+    };
+  }
+
+  function getSyncedSaoPauloNow() {
+    return new Date(Date.now() + state.serverOffsetMs);
+  }
+
+  async function syncProgramTime() {
+    if (state.timeSyncRunning) return;
+    state.timeSyncRunning = true;
+    try {
+      const response = await fetch(TIME_API_URL, { cache: 'no-store' });
+      const data = await response.json();
+      if (data && data.datetime) {
+        state.serverOffsetMs = new Date(data.datetime).getTime() - Date.now();
+        state.timeSyncReady = true;
+      } else {
+        state.serverOffsetMs = 0;
+      }
+    } catch (err) {
+      state.serverOffsetMs = 0;
+    } finally {
+      state.timeSyncRunning = false;
+    }
+  }
+
+  function getCurrentProgramInfo() {
+    const parts = getSaoPauloParts(getSyncedSaoPauloNow());
+    const totalMinutes = (parts.hour * 60) + parts.minute;
+
+    for (let i = 0; i < PROGRAM_SCHEDULE.length; i++) {
+      const entry = PROGRAM_SCHEDULE[i];
+      if (!entry.days.includes(parts.weekdayIndex)) continue;
+      const startMinutes = parseMinutes(entry.start);
+      const endMinutes = parseMinutes(entry.end);
+      if (totalMinutes >= startMinutes && totalMinutes <= endMinutes) {
+        return entry;
+      }
+    }
+
+    return null;
   }
 
   function fitTextToWidth(el, maxPx, minPx) {
@@ -159,6 +265,7 @@
   function renderVoiceBrasilUI() {
     const external = ensureExternalText();
     if (!state.overlay || !state.img || !state.text || !external) return;
+    state.displayMode = 'voz';
     state.overlay.style.display = 'flex';
     applyOverlayLayoutMode();
     state.text.style.display = 'none';
@@ -171,12 +278,26 @@
   function renderIdleLogoUI() {
     const external = ensureExternalText();
     if (!state.overlay || !state.img || !state.text || !external) return;
+    state.displayMode = 'idle';
     state.overlay.style.display = 'flex';
     applyOverlayLayoutMode();
     state.text.style.display = 'none';
     state.img.src = DEFAULT_LOGO;
     external.textContent = '';
     external.style.display = 'none';
+  }
+
+  function renderProgramUI(program) {
+    const external = ensureExternalText();
+    if (!state.overlay || !state.img || !state.text || !external) return;
+    state.displayMode = 'program';
+    state.overlay.style.display = 'flex';
+    applyOverlayLayoutMode();
+    state.text.style.display = 'none';
+    state.img.src = (program && program.image) ? program.image : DEFAULT_LOGO;
+    external.textContent = (program && program.name) ? program.name : 'ATIVIDADE FM 103.1FM';
+    positionExternalText();
+    external.style.display = 'block';
   }
 
   function syncSongInfoLayout(info) {
@@ -190,11 +311,106 @@
   }
 
 
+  function renderSongUI(song, artist) {
+    if (!state.overlay || !state.img || !state.text) return;
+    if (isVoiceBrasilMode()) {
+      renderVoiceBrasilUI();
+      return;
+    }
+    state.displayMode = 'song';
+    state.overlay.style.display = 'flex';
+    const info = (song && artist) ? `${song} - ${artist}` : (song || artist || 'ATIVIDADE FM 103.1FM');
+    syncSongInfoLayout(info);
+    refreshCover(song, artist);
+  }
+
+  function restoreActiveVisualState() {
+    if (!state.overlay || !state.img || !state.text) return;
+
+    if (!state.userInitiatedPlay) {
+      renderIdleLogoUI();
+      return;
+    }
+
+    if (isVoiceBrasilMode()) {
+      renderVoiceBrasilUI();
+      return;
+    }
+
+    if (state.displayMode === 'program') {
+      const currentProgram = getCurrentProgramInfo();
+      if (currentProgram) {
+        renderProgramUI(currentProgram);
+        return;
+      }
+    }
+
+    if (state.currentSong || state.currentArtist) {
+      renderSongUI(state.currentSong, state.currentArtist);
+    } else if (state.lastZenoSong || state.lastZenoArtist) {
+      renderSongUI(state.lastZenoSong, state.lastZenoArtist);
+    } else {
+      renderIdleLogoUI();
+    }
+  }
+
+  function startProgramPreview(reason) {
+    if (!state.userInitiatedPlay) {
+      resetUI();
+      return;
+    }
+
+    if (isVoiceBrasilMode()) {
+      clearProgramPreviewTimer();
+      renderVoiceBrasilUI();
+      return;
+    }
+
+    const currentProgram = getCurrentProgramInfo();
+    if (!currentProgram) {
+      clearProgramPreviewTimer();
+      renderSongUI(state.currentSong || state.lastZenoSong, state.currentArtist || state.lastZenoArtist);
+      return;
+    }
+
+    clearProgramPreviewTimer();
+    state.activeProgramPreviewReason = reason || 'program';
+    renderProgramUI(currentProgram);
+
+    state.programPreviewTimer = setTimeout(function() {
+      state.programPreviewTimer = null;
+      state.activeProgramPreviewReason = '';
+      state.awaitingInitialSongAfterPlay = false;
+
+      if (!state.userInitiatedPlay) {
+        resetUI();
+        return;
+      }
+
+      if (isVoiceBrasilMode()) {
+        renderVoiceBrasilUI();
+        return;
+      }
+
+      if (state.currentSong || state.currentArtist) {
+        renderSongUI(state.currentSong, state.currentArtist);
+      } else if (state.lastZenoSong || state.lastZenoArtist) {
+        renderSongUI(state.lastZenoSong, state.lastZenoArtist);
+      } else {
+        renderIdleLogoUI();
+      }
+    }, PROGRAM_PREVIEW_MS);
+  }
+
   function resetUI() {
     if (!state.overlay || !state.img || !state.text) return;
+    clearProgramPreviewTimer();
+    state.awaitingInitialSongAfterPlay = false;
     syncSongInfoLayout('');
     renderIdleLogoUI();
   }
+
+  window.resetUI = resetUI;
 
   function searchDeezer(query, callback) {
     const callbackName = 'deezer_cb_' + Math.random().toString(36).substring(2, 10);
@@ -262,15 +478,7 @@
   }
 
   function updateUI(song, artist) {
-    if (!state.overlay || !state.img || !state.text) return;
-    if (isVoiceBrasilMode()) {
-      renderVoiceBrasilUI();
-      return;
-    }
-    state.overlay.style.display = 'flex';
-    const info = (song && artist) ? `${song} - ${artist}` : (song || artist || 'ATIVIDADE FM 103.1FM');
-    syncSongInfoLayout(info);
-    refreshCover(song, artist);
+    renderSongUI(song, artist);
   }
 
   function init() {
@@ -290,15 +498,7 @@
         
         createOverlay(wrapper);
         positionExternalText();
-
-        if (state.userInitiatedPlay && (state.currentSong || state.currentArtist)) {
-          updateUI(state.currentSong, state.currentArtist);
-        } else if (state.userInitiatedPlay && isVoiceBrasilMode()) {
-          renderVoiceBrasilUI();
-        } else {
-          renderIdleLogoUI();
-        }
-        
+        restoreActiveVisualState();
         attachPlayerClickListener();
       } else {
         setTimeout(waitForWrapper, 300);
@@ -352,27 +552,54 @@
       wrapper.appendChild(state.overlay);
     }
 
+    function isPlaybackControlClick(ev) {
+      const target = ev && ev.target ? ev.target : null;
+      if (!target || typeof target.closest !== 'function') return false;
+
+      return Boolean(
+        target.closest('#playerbuttonplay') ||
+        target.closest('#playerbuttonpause') ||
+        target.closest('#playerpauseplaywrapper') ||
+        target.closest('.lunaradioplay') ||
+        target.closest('.lunaradiopause')
+      );
+    }
+
     function attachPlayerClickListener() {
       const player = document.getElementById('player');
       if (!player || state.playerClickBound) return;
       state.playerClickBound = true;
       player.addEventListener('click', function(ev) {
         if (!ev.isTrusted) return;
+
+        const wasPlayingBeforeClick = isPlaying();
+        const playbackControlClick = isPlaybackControlClick(ev);
+
         setTimeout(function() {
-          state.userInitiatedPlay = isPlaying();
-          if (!state.userInitiatedPlay) {
+          const playingNow = isPlaying();
+
+          if (!playbackControlClick && wasPlayingBeforeClick === playingNow) {
+            return;
+          }
+
+          if (wasPlayingBeforeClick === playingNow) {
+            return;
+          }
+
+          state.userInitiatedPlay = playingNow;
+          if (!playingNow) {
             resetUI();
             return;
           }
+
           if (isVoiceBrasilMode()) {
+            clearProgramPreviewTimer();
             renderVoiceBrasilUI();
-          } else if (state.currentSong || state.currentArtist) {
-            updateUI(state.currentSong, state.currentArtist);
-          } else if (state.lastZenoSong || state.lastZenoArtist) {
-            updateUI(state.lastZenoSong, state.lastZenoArtist);
-          } else {
-            resetUI();
+            return;
           }
+
+          state.awaitingInitialSongAfterPlay = true;
+          startProgramPreview('play');
         }, 200);
       });
     }
@@ -417,10 +644,19 @@
               state.currentArtist = artist;
               state.lastZenoSong = song;
               state.lastZenoArtist = artist;
-              
-              if (state.userInitiatedPlay) {
-                updateUI_External(song, artist);
+
+              if (!state.userInitiatedPlay) return;
+
+              if (state.awaitingInitialSongAfterPlay) {
+                state.awaitingInitialSongAfterPlay = false;
+                if (state.programPreviewTimer && state.activeProgramPreviewReason === 'play') {
+                  return;
+                }
+                renderSongUI(song, artist);
+                return;
               }
+
+              startProgramPreview('track-change');
             }
           }
         } catch (e) {}
@@ -428,70 +664,12 @@
     } catch (e) {}
   }
 
-  function updateUI_External(song, artist) {
-    if (isVoiceBrasilMode()) {
-      renderVoiceBrasilUI();
-      return;
-    }
-    const overlay = document.getElementById('atividade-metadata-overlay');
-    const img = document.getElementById('atividade-cover');
-    const text = document.getElementById('atividade-song-info');
-    if (overlay && img && text) {
-      overlay.style.display = 'flex';
-      const info = (song && artist) ? `${song} - ${artist}` : (song || artist || 'ATIVIDADE FM 103.1FM');
-      syncSongInfoLayout(info);
-
-      const cleanQuery = cleanTitleForSearch(artist, song);
-      const searchDeezerLocal = function(q, cb) {
-        const cbName = 'dz_ext_' + Math.random().toString(36).substring(2, 10);
-        window[cbName] = function(d) {
-          let c = null;
-          if (d && d.data && d.data.length > 0) {
-            const res = d.data[0];
-            c = (res.album && res.album.cover_xl) ? res.album.cover_xl : (res.artist ? res.artist.picture_xl : null);
-          }
-          cb(c);
-          const s = document.getElementById(cbName);
-          if (s) s.remove();
-          delete window[cbName];
-        };
-        const s = document.createElement('script');
-        s.id = cbName;
-        s.src = `https://api.deezer.com/search?q=${encodeURIComponent(q)}&output=jsonp&callback=${cbName}&_=${Date.now()}`;
-        s.onerror = function() {
-          cb(null);
-          const sx = document.getElementById(cbName);
-          if (sx) sx.remove();
-          delete window[cbName];
-        };
-        document.body.appendChild(s);
-        setTimeout(function() {
-          if (window[cbName]) {
-            cb(null);
-            const sx = document.getElementById(cbName);
-            if (sx) sx.remove();
-            delete window[cbName];
-          }
-        }, 5000);
-      };
-
-      searchDeezerLocal(cleanQuery, function(c) {
-        if (c) img.src = c;
-        else {
-          if (artist) {
-            searchDeezerLocal(artist.trim(), function(c2) { img.src = c2 || DEFAULT_LOGO; });
-          } else img.src = DEFAULT_LOGO;
-        }
-      });
-    }
-  }
-
-
   window.addEventListener('atividade-stream-mode-change', function(e) {
     const detail = e && e.detail ? e.detail : {};
     state.specialMode = detail.mode || 'zeno';
 
     if (state.specialMode === 'voz') {
+      clearProgramPreviewTimer();
       if (state.userInitiatedPlay) {
         renderVoiceBrasilUI();
       } else {
@@ -501,13 +679,8 @@
     }
 
     if (state.userInitiatedPlay) {
-      if (state.currentSong || state.currentArtist) {
-        updateUI(state.currentSong, state.currentArtist);
-      } else if (state.lastZenoSong || state.lastZenoArtist) {
-        updateUI(state.lastZenoSong, state.lastZenoArtist);
-      } else {
-        resetUI();
-      }
+      state.awaitingInitialSongAfterPlay = true;
+      startProgramPreview('mode-change');
     } else {
       resetUI();
     }
@@ -518,13 +691,13 @@
     state.specialMode = (e && e.detail && e.detail.mode) ? e.detail.mode : (window.__atividadeCurrentStreamMode || state.specialMode);
     init();
     setTimeout(function() {
-      if (isVoiceBrasilMode() && state.userInitiatedPlay) {
-        renderVoiceBrasilUI();
-      } else {
-        positionExternalText();
-      }
+      restoreActiveVisualState();
+      positionExternalText();
     }, 400);
   });
+
+  syncProgramTime();
+  setInterval(syncProgramTime, 300000);
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', function() {

@@ -272,13 +272,15 @@ footer {
         top: var(--land-vol-top) !important;
         left: var(--land-vol-left) !important;
         width: var(--land-vol-width) !important;
-        height: 10px !important;
+        height: 42px !important;
         transform: none !important;
         position: absolute !important;
         background: transparent !important;
         z-index: 30 !important;
-        overflow: hidden !important;
+        overflow: visible !important;
         border-radius: 999px !important;
+        touch-action: none !important;
+        -webkit-tap-highlight-color: transparent !important;
     }
 
     body div#player div#playervolumebackground {
@@ -286,37 +288,66 @@ footer {
         top: 50% !important;
         left: 0 !important;
         width: 100% !important;
-        height: 4px !important;
+        height: 10px !important;
         transform: translateY(-50%) !important;
         background: #ffffff !important;
         z-index: 31 !important;
         border-radius: 999px !important;
-        overflow: hidden !important;
+        overflow: visible !important;
     }
 
     body div#player div#playervolumefill {
         position: absolute !important;
         top: 50% !important;
         left: 0 !important;
-        height: 4px !important;
+        height: 10px !important;
         transform: translateY(-50%) !important;
         background: #000000 !important;
         z-index: 32 !important;
         border-radius: 999px !important;
         max-width: 100% !important;
-        overflow: hidden !important;
+        overflow: visible !important;
     }
 
     body div#player div#playervolumefill::before,
     body div#player div#playervolumefill::after {
         left: auto !important;
-        right: 1px !important;
+        right: 0 !important;
         margin-right: 0 !important;
-        max-width: 8px !important;
-        width: 8px !important;
-        height: 8px !important;
+        max-width: 18px !important;
+        width: 18px !important;
+        height: 18px !important;
         box-sizing: border-box !important;
+        transform: translate(50%, -50%) !important;
+        border-radius: 50% !important;
+    }
+
+
+    body div#player img#playervolumegrab {
+        position: absolute !important;
+        top: calc(50% - 4px) !important;
+        left: -9px !important;
+        width: calc(100% + 18px) !important;
+        height: 42px !important;
         transform: translateY(-50%) !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        z-index: 35 !important;
+        touch-action: none !important;
+        -webkit-tap-highlight-color: transparent !important;
+    }
+
+    body div#player div#playervolumeicon {
+        position: absolute !important;
+        top: 50% !important;
+        width: 18px !important;
+        height: 18px !important;
+        min-width: 18px !important;
+        min-height: 18px !important;
+        margin: 0 !important;
+        border-radius: 50% !important;
+        transform: translateY(-50%) !important;
+        z-index: 36 !important;
     }
 
     /* No modo paisagem do celular, o VU continua existindo, porém fica apenas oculto */
@@ -821,7 +852,7 @@ footer {
 })();
 </script>
 
-<script src="atividade_metadata.js?v=20260416-voz-brasil-2"></script>
+<script src="atividade_metadata.js?v=P260417-landscape-volume-grab-icon-fix-3"></script>
 
 <button type="button" class="mobile-nav-toggle"><i class="fas fa-bars"></i></button>
 <header id="header">
