@@ -82,10 +82,7 @@
   }
 
   var WEEKDAY_ORDER = ['dom', 'seg', 'ter', 'quar', 'qui', 'sex', 'sab'];
-  // Use the compressed JPG version of the vinyl graphic.  Converting
-  // from PNG to JPG reduces file size and improves performance.  The
-  // corresponding image can be found in assets/base/vinyl.jpg.
-  var DEFAULT_VINYL_PATH = 'assets/base/vinyl.jpg';
+  var DEFAULT_VINYL_PATH = 'assets/base/vinyl.png';
   var PROGRAMS_SOURCE_CACHE = Object.create(null);
   var TIME_SOURCE_CACHE = Object.create(null);
   var PAGE_BOOT_CACHE_BUSTER = String(Date.now());
@@ -477,21 +474,6 @@
     }
   }
 
-  // Expose key audio-control helpers on the global object.  They are used
-  // outside of this closure (e.g. in visibilitychange handlers) to pause
-  // and resume audio detection when the page is hidden or visible.
-  if (typeof window !== 'undefined') {
-    window.__reClearAudioDetection = clearAudioDetection;
-    window.__reStartAudioDetection = startAudioDetection;
-    // Track when the page becomes visible again.  When switching back from
-    // a hidden tab, browsers may suddenly execute all throttled timers at
-    // once, which can create hiccups in the audio stream.  To smooth
-    // things out, we set a short grace period after visibility changes
-    // where scheduled work is deferred.  This timestamp indicates when
-    // work may resume.
-    window.__reVisibilityResumeAt = 0;
-  }
-
 
   function notifyEngineState(engine) {
     if (engine && typeof engine.onStateChange === 'function') engine.onStateChange();
@@ -560,13 +542,6 @@
     engine.silenceStartedAt = 0;
     engine.waitingForAudio = !engine.audioDetected;
     engine.detectInterval = setInterval(function () {
-      // When the document is hidden, we avoid performing expensive
-      // audio-analysis work.  Audio continues to play in the background,
-      // but skipping the detection logic reduces CPU usage and prevents
-      // the page from lagging when minimized.  The detection loop will
-      // resume automatically when the page becomes visible again because
-      // the interval keeps running.
-      if (typeof document !== 'undefined' && document.hidden) return;
       if (!engine.wantPlay) {
         clearAudioDetection(engine);
         return;
@@ -676,13 +651,6 @@
 
   function bindPlayers() {
     var engines = new Map();
-    // Make the engines map globally accessible so that other parts of the
-    // script (e.g. visibilitychange handlers) can pause/resume operations
-    // when the page visibility changes.  Without this exposure, audio
-    // detection intervals may continue running in the background, causing
-    // performance issues.  Assigning the map on the window allows us to
-    // iterate through the active engines later.
-    if (typeof window !== 'undefined') window.__reEngines = engines;
 
     function updateSliderAppearance(slider) {
       if (!slider) return;
@@ -1064,28 +1032,6 @@
       var slider = host.querySelector('.re-volume-slider');
       if (slider && String(slider.value) !== String(volumeValue)) slider.value = String(volumeValue);
       if (slider) updateSliderAppearance(slider);
-
-      // For vinyl widgets, switch between static JPG and animated GIF
-      // depending on whether the player is actively streaming.  When
-      // liveActive or autoDjActive is true, use the GIF; otherwise use
-      // the static JPEG.  Both sources are stored on the .re-vinyl-image
-      // element via data-static-src and data-gif-src attributes.
-      if (host.classList.contains('re-type-vinyl')) {
-        var vinylImg = host.querySelector('.re-vinyl-image');
-        if (vinylImg) {
-          var staticSrc = vinylImg.getAttribute('data-static-src') || vinylImg.getAttribute('data-base-src');
-          var gifSrc = vinylImg.getAttribute('data-gif-src');
-          var shouldUseGif = liveActive || autoDjActive;
-          var desired = shouldUseGif ? gifSrc : staticSrc;
-          // Only update the source if it has changed to avoid unnecessary
-          // refreshes.  Compare desired with the current base src.
-          if (desired && vinylImg.getAttribute('data-base-src') !== desired) {
-            // Use a cache-busting token based on now to ensure the GIF
-            // refreshes properly when switching between static and animated.
-            setFreshImageSource(vinylImg, desired, Date.now());
-          }
-        }
-      }
     }
 
     function switchEngineStream(engine, desiredUrl) {
@@ -1125,18 +1071,7 @@
     }
 
     function syncManagedStreams() {
-    // Skip syncing when the page is hidden or during a visibility-resume
-    // grace period.  When switching back to a tab, browsers may run
-    // previously throttled timers immediately.  Deferring work for a short
-    // period allows the audio stream to stabilize before performing
-    // housekeeping.  The __reVisibilityResumeAt timestamp is set on
-    // visibilitychange and indicates when it is safe to resume work.
-    if (typeof document !== 'undefined') {
-      if (document.hidden) return;
-      var resumeAt = (window && window.__reVisibilityResumeAt) || 0;
-      if (resumeAt && Date.now() < resumeAt) return;
-    }
-    engines.forEach(function (engine) {
+      engines.forEach(function (engine) {
         var host = engine.hostNode || null;
         var baseUrl = host && host.getAttribute ? String(host.getAttribute('data-radio-url') || '').trim() : '';
         if (!isManagedRadioUrl(baseUrl, host || document.body) && !isManagedRadioUrl(engine.lastUrl, host || document.body)) return;
@@ -1817,27 +1752,8 @@
       var current = findProgram(items, now);
       var imageEl = widget.querySelector('.re-vinyl-image');
       if (!imageEl) return;
-      // Determine the base source for the vinyl image.  We always load
-      // a static JPEG when the program is not playing.  If the schedule
-      // references a PNG, convert it to JPG for the static variant.  When
-      // the program is playing, a corresponding GIF (with the same base
-      // name) is used instead.  The GIFs are generated at build time
-      // (1.gif through 10.gif and vinyl.gif) to show a rotating disc.
       var src = current && current.vinyl ? current.vinyl : DEFAULT_VINYL_PATH;
-      var staticSrc = src;
-      if (typeof staticSrc === 'string' && staticSrc.toLowerCase().endsWith('.png')) {
-        staticSrc = staticSrc.replace(/\.png$/i, '.jpg');
-      }
-      var gifSrc = staticSrc.replace(/\.jpg$/i, '.gif');
-      // Store both the static and GIF sources on the element for later
-      // switching in syncHost().  data-static-src holds the JPEG and
-      // data-gif-src holds the GIF.  data-base-src is set by
-      // setFreshImageSource() and updated whenever the image changes.
-      imageEl.setAttribute('data-static-src', staticSrc);
-      imageEl.setAttribute('data-gif-src', gifSrc);
-      // Initially load the static JPG.  setFreshImageSource() adds a
-      // cache-busting parameter based on the current timestamp.
-      setFreshImageSource(imageEl, staticSrc, now && now.isoLocal ? now.isoLocal : Date.now());
+      setFreshImageSource(imageEl, src, now && now.isoLocal ? now.isoLocal : Date.now());
       imageEl.style.display = '';
     }
 
@@ -1877,16 +1793,6 @@
     var lastSourceRefreshAt = 0;
 
     function tick() {
-      // Avoid running the scheduler tick when the page is hidden or during
-      // the grace period after a tab becomes visible.  Frequent DOM
-      // updates while the tab is not visible can waste resources, and
-      // deferring work for a short period after returning helps prevent
-      // stutters caused by a sudden burst of timer callbacks.
-      if (typeof document !== 'undefined') {
-        if (document.hidden) return;
-        var resumeAt = (window && window.__reVisibilityResumeAt) || 0;
-        if (resumeAt && Date.now() < resumeAt) return;
-      }
       var clock = currentRuntimeClockContext();
       var renderKey = clock && clock.isoLocal ? clock.isoLocal : String(Date.now());
       if (renderKey !== lastRenderKey) {
@@ -1962,45 +1868,5 @@
     bindRadioMetadataWidgets();
     bindSchedules();
     bindMapPollWidget();
-
-    // When the visibility state of the page changes (for example, when
-    // the user switches to another tab or minimizes the window), we pause
-    // expensive audio detection tasks.  Without this, the script continues
-    // to perform audio analysis and other periodic work even when hidden,
-    // which can lead to the audio stream stuttering or the UI freezing.
-    // When the page becomes visible again, audio detection is resumed for
-    // any engine that is supposed to be playing.
-    if (typeof document !== 'undefined') {
-      document.addEventListener('visibilitychange', function () {
-        var engines = window.__reEngines;
-        var clearDetection = window.__reClearAudioDetection;
-        var startDetection = window.__reStartAudioDetection;
-        if (!engines) return;
-        if (document.hidden) {
-          // Reset the visibility resume timestamp when hiding the page.
-          if (typeof window !== 'undefined') window.__reVisibilityResumeAt = 0;
-          engines.forEach(function (engine) {
-            // Stop audio detection immediately when the tab is hidden.
-            if (clearDetection) clearDetection(engine);
-          });
-        } else {
-          // Set a future timestamp to defer work for a short period after
-          // returning to the tab.  Deferring expensive work prevents
-          // stutters caused by multiple timers firing at once.
-          if (typeof window !== 'undefined') window.__reVisibilityResumeAt = Date.now() + 2000;
-          engines.forEach(function (engine) {
-            if (engine.wantPlay && !engine.detectInterval) {
-              if (startDetection) {
-                // Delay the restart of audio detection slightly to allow
-                // the browser to settle after resuming a hidden tab.
-                setTimeout(function () {
-                  startDetection(engine);
-                }, 500);
-              }
-            }
-          });
-        }
-      }, { passive: true });
-    }
   });
 })();

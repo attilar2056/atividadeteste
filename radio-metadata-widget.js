@@ -198,13 +198,16 @@
         }
       });
 
-      const finalizeResolved = async (chosenBase, bestInfo) => {
+      const finalizeResolved = async (chosenBase, bestInfo, segmentArtistInfo) => {
         let resolvedArtist = cleanupMetadataChunk(chosenBase.artist);
         let resolvedSong = cleanupMetadataChunk(chosenBase.song);
         let resolvedCover = (bestInfo && bestInfo.scores && bestInfo.scores.cover) || '';
 
         if (bestInfo && bestInfo.scores && bestInfo.scores.artistScore >= 0.68 && bestInfo.scores.resultArtist) {
           resolvedArtist = cleanupMetadataChunk(bestInfo.scores.resultArtist);
+        } else if (segmentArtistInfo && segmentArtistInfo.bestArtistScore >= 0.78 && segmentArtistInfo.bestArtist) {
+          resolvedArtist = cleanupMetadataChunk(segmentArtistInfo.bestArtist);
+          if (!resolvedCover && segmentArtistInfo.cover) resolvedCover = segmentArtistInfo.cover;
         }
 
         if (bestInfo && bestInfo.scores && bestInfo.scores.songScore >= 0.82 && bestInfo.scores.resultSong) {
@@ -220,6 +223,39 @@
           }
           if (!resolvedSong || similarityScore(resolvedSong, forcedSong) < 0.75) {
             resolvedSong = forcedSong;
+          }
+        }
+
+        if (!resolvedCover) {
+          const fallbackCoverQuery = cleanTitleForSearch(resolvedArtist, resolvedSong) || cleanTitleForSearch(chosenBase.artist, chosenBase.song);
+          if (fallbackCoverQuery) {
+            const fallbackResults = await searchDeezerDetailed(fallbackCoverQuery, this.options.deezer.limit, this.options.deezer.timeoutMs);
+            if (fallbackResults && fallbackResults.length) {
+              const coverOnlyBest = fallbackResults.reduce(function (acc, item) {
+                const score = scoreResultForInterpretation(item, resolvedArtist, resolvedSong);
+                return (!acc || score.total > acc.total) ? score : acc;
+              }, null);
+              if (coverOnlyBest && coverOnlyBest.cover) {
+                resolvedCover = coverOnlyBest.cover;
+              }
+            }
+          }
+        }
+
+        if (!resolvedCover && resolvedArtist) {
+          const artistOnlyResults = await searchDeezerDetailed(resolvedArtist, 5, this.options.deezer.timeoutMs);
+          if (artistOnlyResults && artistOnlyResults.length) {
+            let bestArtistOnly = null;
+            artistOnlyResults.forEach(function (item) {
+              const artistName = item && item.artist ? item.artist.name : '';
+              const artistScore = similarityScore(resolvedArtist, artistName);
+              if (!bestArtistOnly || artistScore > bestArtistOnly.artistScore) {
+                bestArtistOnly = { artistScore: artistScore, cover: getCoverFromResult(item) };
+              }
+            });
+            if (bestArtistOnly && bestArtistOnly.artistScore >= 0.78 && bestArtistOnly.cover) {
+              resolvedCover = bestArtistOnly.cover;
+            }
           }
         }
 
@@ -239,18 +275,23 @@
       const infoFirst = await resolveArtistFromSingleSegment(first, this.options.deezer.timeoutMs);
       const infoSecond = await resolveArtistFromSingleSegment(second, this.options.deezer.timeoutMs);
       let chosen = best && best.base ? best.base : direct;
+      let chosenArtistInfo = null;
 
       if (infoFirst.artistBias > infoSecond.artistBias + 0.08) {
         chosen = direct;
+        chosenArtistInfo = infoFirst;
       } else if (infoSecond.artistBias > infoFirst.artistBias + 0.08) {
         chosen = swapped;
+        chosenArtistInfo = infoSecond;
       } else if (best && best.orientation === 'swapped') {
         chosen = swapped;
+        chosenArtistInfo = infoSecond.artistBias >= infoFirst.artistBias ? infoSecond : infoFirst;
       } else {
         chosen = direct;
+        chosenArtistInfo = infoFirst.artistBias >= infoSecond.artistBias ? infoFirst : infoSecond;
       }
 
-      return finalizeResolved(chosen, best);
+      return finalizeResolved(chosen, best, chosenArtistInfo);
     }
 
     _connectEventSource() {
