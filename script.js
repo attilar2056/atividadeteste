@@ -107,6 +107,21 @@
       localStorage.setItem(VOLUME_STORAGE_KEY, String(normalized));
     } catch (_error) {}
   }
+  function pageIsHidden() {
+    try { return !!document.hidden; } catch (_error) { return false; }
+  }
+
+  function preloadImageAsset(src) {
+    var safeSrc = String(src || '').trim();
+    if (!safeSrc) return;
+    if (!window.__reImagePreloadCache) window.__reImagePreloadCache = Object.create(null);
+    if (window.__reImagePreloadCache[safeSrc]) return;
+    var img = new Image();
+    img.decoding = 'async';
+    img.src = safeSrc;
+    window.__reImagePreloadCache[safeSrc] = img;
+  }
+
   var DEFAULT_RADIO_STREAM_URL = 'https://stream.zeno.fm/z2h3tpp2fchvv';
   var VOZ_DO_BRASIL_STREAM_URL = 'http://radioaovivo.senado.gov.br/canal2.mp3';
   var AUTO_DJ_RETRY_INTERVAL_MS = 15 * 1000;
@@ -1455,49 +1470,77 @@
       var rotateSeconds = Math.max(15, Math.min(60, Number(widget.getAttribute('data-news-rotate-seconds') || 15) || 15));
       var errorText = widget.getAttribute('data-news-error-text') || 'Erro ao carregar';
       var rotationTimer = null;
+      var items = [];
+      var groupStart = 0;
+
+      function clearRotationTimer() {
+        if (rotationTimer) {
+          clearTimeout(rotationTimer);
+          rotationTimer = null;
+        }
+      }
+
+      function renderGroup() {
+        list.innerHTML = '';
+        var group = items.slice(groupStart, groupStart + itemsPerView);
+        if (!group.length) {
+          groupStart = 0;
+          group = items.slice(0, itemsPerView);
+        }
+        group.forEach(function (item) {
+          var row = document.createElement('div');
+          row.className = 're-news-item';
+          var link = document.createElement('a');
+          link.href = item.link || '#';
+          link.target = '_blank';
+          link.rel = 'noopener';
+          link.textContent = item.title || 'Sem título';
+          var date = document.createElement('div');
+          date.className = 're-news-date';
+          var rawDate = item.pubDate ? new Date(item.pubDate) : null;
+          date.textContent = rawDate && !isNaN(rawDate.getTime()) ? rawDate.toLocaleString('pt-BR') : '';
+          row.appendChild(link);
+          row.appendChild(date);
+          list.appendChild(row);
+        });
+      }
+
+      function scheduleNextRotation() {
+        clearRotationTimer();
+        if (items.length <= itemsPerView) return;
+        rotationTimer = setTimeout(function () {
+          if (pageIsHidden()) {
+            scheduleNextRotation();
+            return;
+          }
+          groupStart += itemsPerView;
+          if (groupStart >= items.length) groupStart = 0;
+          renderGroup();
+          scheduleNextRotation();
+        }, rotateSeconds * 1000);
+      }
+
       list.textContent = 'Carregando...';
       fetch(apiUrl).then(function (res) {
         return res.json();
       }).then(function (data) {
-        var items = Array.isArray(data && data.items) ? data.items.slice(0, maxItems) : [];
+        items = Array.isArray(data && data.items) ? data.items.slice(0, maxItems) : [];
         if (!items.length) throw new Error('Sem notícias');
-        var groupStart = 0;
-        function renderGroup() {
-          list.innerHTML = '';
-          var group = items.slice(groupStart, groupStart + itemsPerView);
-          if (!group.length) {
-            groupStart = 0;
-            group = items.slice(0, itemsPerView);
-          }
-          group.forEach(function (item) {
-            var row = document.createElement('div');
-            row.className = 're-news-item';
-            var link = document.createElement('a');
-            link.href = item.link || '#';
-            link.target = '_blank';
-            link.rel = 'noopener';
-            link.textContent = item.title || 'Sem título';
-            var date = document.createElement('div');
-            date.className = 're-news-date';
-            var rawDate = item.pubDate ? new Date(item.pubDate) : null;
-            date.textContent = rawDate && !isNaN(rawDate.getTime()) ? rawDate.toLocaleString('pt-BR') : '';
-            row.appendChild(link);
-            row.appendChild(date);
-            list.appendChild(row);
-          });
-        }
+        groupStart = 0;
         renderGroup();
-        if (rotationTimer) clearInterval(rotationTimer);
-        if (items.length > itemsPerView) {
-          rotationTimer = setInterval(function () {
-            groupStart += itemsPerView;
-            if (groupStart >= items.length) groupStart = 0;
-            renderGroup();
-          }, rotateSeconds * 1000);
-        }
+        scheduleNextRotation();
       }).catch(function () {
         list.textContent = errorText;
       });
+
+      document.addEventListener('visibilitychange', function () {
+        if (pageIsHidden()) {
+          clearRotationTimer();
+          return;
+        }
+        if (items.length) renderGroup();
+        scheduleNextRotation();
+      }, { passive: true });
     });
   }
 
@@ -1580,10 +1623,14 @@
       links = Array.isArray(links) ? links : [];
       if (!items.length) return;
 
+      items.forEach(preloadImageAsset);
+
       var index = 0;
       var seconds = Math.max(15, Number(widget.getAttribute('data-image-loop-seconds') || 15) || 15);
       var linkEl = widget.querySelector('.re-image-loop-link');
       var existingFillLink = widget.querySelector('.re-link-fill');
+      var rotationTimer = null;
+      var fadeTimer = null;
       if (!linkEl) {
         if (existingFillLink && existingFillLink.querySelector('.re-image-loop-box')) {
           linkEl = existingFillLink;
@@ -1595,6 +1642,17 @@
           linkEl.rel = 'noopener';
           linkEl.setAttribute('aria-label', 'Abrir link do banner');
           widget.appendChild(linkEl);
+        }
+      }
+
+      function clearTimers() {
+        if (rotationTimer) {
+          clearTimeout(rotationTimer);
+          rotationTimer = null;
+        }
+        if (fadeTimer) {
+          clearTimeout(fadeTimer);
+          fadeTimer = null;
         }
       }
 
@@ -1615,25 +1673,50 @@
         }
       }
 
-      function applySlide(idx) {
+      function applySlide(idx, skipFade) {
+        if (skipFade) img.style.transition = 'none';
         img.src = items[idx];
         img.style.opacity = '1';
         applyLink(idx);
+        if (skipFade) {
+          requestAnimationFrame(function () {
+            img.style.transition = 'opacity .45s ease';
+          });
+        }
+      }
+
+      function scheduleNext() {
+        clearTimers();
+        if (items.length <= 1) return;
+        rotationTimer = setTimeout(function () {
+          if (pageIsHidden()) {
+            scheduleNext();
+            return;
+          }
+          index = (index + 1) % items.length;
+          img.style.opacity = '0';
+          fadeTimer = setTimeout(function () {
+            applySlide(index, false);
+            scheduleNext();
+          }, 220);
+        }, seconds * 1000);
       }
 
       img.style.opacity = '1';
       img.style.transition = 'opacity .45s ease';
-      applySlide(index);
+      applySlide(index, true);
+      scheduleNext();
 
-      if (items.length > 1) {
-        setInterval(function () {
-          index = (index + 1) % items.length;
-          img.style.opacity = '0';
-          setTimeout(function () {
-            applySlide(index);
-          }, 220);
-        }, seconds * 1000);
-      }
+      document.addEventListener('visibilitychange', function () {
+        if (pageIsHidden()) {
+          clearTimers();
+          img.style.transition = 'none';
+          img.style.opacity = '1';
+          return;
+        }
+        applySlide(index, true);
+        scheduleNext();
+      }, { passive: true });
     });
   }
 
@@ -1793,6 +1876,7 @@
     var lastSourceRefreshAt = 0;
 
     function tick() {
+      if (pageIsHidden()) return;
       var clock = currentRuntimeClockContext();
       var renderKey = clock && clock.isoLocal ? clock.isoLocal : String(Date.now());
       if (renderKey !== lastRenderKey) {
@@ -1805,58 +1889,16 @@
       }
     }
 
+    document.addEventListener('visibilitychange', function () {
+      if (pageIsHidden()) return;
+      lastRenderKey = '';
+      renderFromCache();
+      refreshFromSource();
+    }, { passive: true });
+
     setInterval(tick, 1000);
   }
 
-
-  function bindMapPollWidget() {
-    var slot = document.querySelector('.re-map-poll-slot');
-    if (!slot) return;
-    var image = slot.querySelector('.re-map-poll-image');
-    var frame = slot.querySelector('.re-map-poll-frame');
-    if (!image || !frame) return;
-
-    var STATE_URL = 'https://jovial-chaja-1bae9e.netlify.app/.netlify/functions/state-public';
-    var WIDGET_URL = 'https://jovial-chaja-1bae9e.netlify.app/widget.html';
-    var CHECK_INTERVAL = 15 * 60 * 1000;
-    var lastMode = '';
-
-    function applyMode(mode) {
-      var safeMode = String(mode || 'map').toLowerCase();
-      var showWidget = safeMode === 'poll' || safeMode === 'result';
-      if (showWidget) {
-        slot.classList.add('is-poll-active');
-        if (!frame.getAttribute('src') || frame.getAttribute('src') === 'about:blank') {
-          frame.setAttribute('src', WIDGET_URL);
-        }
-      } else {
-        slot.classList.remove('is-poll-active');
-        if (frame.getAttribute('src') && frame.getAttribute('src') !== 'about:blank') {
-          frame.setAttribute('src', 'about:blank');
-        }
-      }
-      lastMode = safeMode;
-    }
-
-    function checkState() {
-      fetch(STATE_URL, {
-        cache: 'no-store',
-        headers: { 'Accept': 'application/json' }
-      }).then(function (res) {
-        if (!res.ok) throw new Error('Falha ao consultar enquete');
-        return res.json();
-      }).then(function (data) {
-        var mode = data && data.mode ? data.mode : (data && data.state && data.state.mode ? data.state.mode : 'map');
-        applyMode(mode);
-      }).catch(function () {
-        if (!lastMode) applyMode('map');
-      });
-    }
-
-    applyMode('map');
-    checkState();
-    setInterval(checkState, CHECK_INTERVAL);
-  }
 
   document.addEventListener('DOMContentLoaded', function () {
     bindPlayers();
@@ -1867,6 +1909,5 @@
     bindImageLoops();
     bindRadioMetadataWidgets();
     bindSchedules();
-    bindMapPollWidget();
   });
 })();
