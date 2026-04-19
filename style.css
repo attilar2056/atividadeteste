@@ -95,6 +95,9 @@ html.re-dark-theme, body.re-dark-theme { --re-page-bg: var(--re-page-bg-dark); -
   display:block;
   position:relative;
   border-radius:999px;
+  /* Ensure GIFs and images fill the vinyl container.  Without object-fit: cover,
+     large black borders can appear when animated GIFs have extra padding. */
+  object-fit: cover;
   background:#f3f4f6;
   border:2px solid #a7f3d0;
   transition:background .2s ease, border-color .2s ease;
@@ -147,7 +150,16 @@ html.re-dark-theme .re-theme-icon-moon, body.re-dark-theme .re-theme-icon-moon, 
 
 .re-vinyl-wrap { width:100%; height:100%; display:flex; align-items:center; justify-content:center; }
 .re-vinyl-image { border-radius:999px; }
-.re-type-vinyl.is-live-active .re-vinyl-image { animation: re-spin 4s linear infinite; }
+.re-type-vinyl.is-live-active .re-vinyl-image {
+  /* The vinyl image spins when a program is live.  The script
+     listens for the `visibilitychange` event and pauses or resumes
+     the animation by toggling `animationPlayState` on these elements.  This
+     ensures that the disc spins normally when visible but doesn't cause
+     unnecessary CPU usage when the page is hidden. */
+  /* No CSS-based spin for the vinyl.  The animated GIF handles
+     rotation. */
+  animation: none;
+}
 @keyframes re-spin { from { transform:rotate(0deg); } to { transform:rotate(360deg); } }
 .re-container { overflow:visible; }
 .re-container-label {

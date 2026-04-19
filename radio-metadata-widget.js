@@ -23,20 +23,13 @@
       gap: '14px'
     },
     debug: false,
-    transitionOnTrackChange: true,
-    transitionDelayMs: 12000,
-    schedule: {
-      enabled: true,
-      url: 'programas/programacao.json',
-      programField: 'programas'
-    },
     onUpdate: null
   };
 
   class UniversalRadioMetadata {
     constructor(options) {
       this.options = deepMerge(DEFAULTS, options || {});
-      this.state = {
+        this.state = {
         root: null,
         coverEl: null,
         textEl: null,
@@ -46,11 +39,24 @@
         resolveCache: Object.create(null),
         eventSource: null,
         styleInjected: false,
-        hasDisplayedTrack: false,
-        pendingTransitionTimer: null,
-        pendingTransitionToken: 0,
-        scheduleCache: null,
-        schedulePromise: null
+        /**
+         * Cache da programação carregada a partir de programas/programacao.json.
+         * Se já estiver carregado, reaproveitamos para evitar múltiplos fetch.
+         */
+        programSchedule: null,
+        /**
+         * Promessa em andamento para carregar a programação. Evita
+         * múltiplas requisições concorrentes quando vários updates
+         * chamam _loadSchedule ao mesmo tempo.
+         */
+        scheduleFetchPromise: null,
+        /**
+         * Temporizador para atualizar o metadata. Quando um novo metadado chega,
+         * o widget mostra um placeholder por alguns segundos antes de atualizar
+         * para as informações da nova música. Este campo guarda o ID do
+         * temporizador ativo para permitir cancelamento.
+         */
+        pendingTimer: null
       };
 
       this._boundOnMessage = this._onSseMessage.bind(this);
@@ -76,14 +82,15 @@
         this.state.eventSource.close();
         this.state.eventSource = null;
       }
-      this._clearPendingTransition();
       return this;
     }
 
     reset() {
-      this._clearPendingTransition();
-      this.state.lastRawTitle = '';
-      this.state.hasDisplayedTrack = false;
+      // Cancelar qualquer atualização pendente quando resetar.
+      if (this.state.pendingTimer) {
+        clearTimeout(this.state.pendingTimer);
+        this.state.pendingTimer = null;
+      }
       this._render({
         song: this.options.stationName || this.options.textFallback || 'Ao vivo',
         artist: '',
@@ -98,67 +105,31 @@
       if (!raw || raw === this.state.lastRawTitle) return null;
 
       this.state.lastRawTitle = raw;
-
-      const immediate = this.parseRawTitle(raw);
-      const resolvedPromise = this.resolveTrackMetadata(raw).catch(() => immediate);
-      const shouldTransition = !!(this.options.transitionOnTrackChange && this.state.hasDisplayedTrack);
-
-      if (!shouldTransition) {
-        this._render({
-          song: immediate.song || raw,
-          artist: immediate.artist || '',
-          cover: this.options.defaultCover || '',
-          rawTitle: raw
-        });
-
-        const firstResolved = await resolvedPromise;
-        this._render({
-          song: firstResolved.song || immediate.song || raw,
-          artist: firstResolved.artist || immediate.artist || '',
-          cover: firstResolved.cover || this.options.defaultCover || '',
-          rawTitle: raw
-        });
-        this.state.hasDisplayedTrack = true;
-        return firstResolved;
+      // Quando um novo metadado chega, cancelamos qualquer atualização agendada
+      // anteriormente e mostramos um placeholder com o logotipo e o programa/locutor
+      // por 12 segundos. Somente após esse período atualizamos para a nova música.
+      if (this.state.pendingTimer) {
+        clearTimeout(this.state.pendingTimer);
+        this.state.pendingTimer = null;
       }
-
-      const token = ++this.state.pendingTransitionToken;
-      this._clearPendingTransition();
-
-      const currentProgram = await this._getCurrentProgramDisplay();
-      if (token !== this.state.pendingTransitionToken) return null;
-
-      this._render({
-        song: currentProgram.title || this.options.stationName || this.options.textFallback || 'Ao vivo',
-        artist: '',
-        cover: this.options.defaultCover || '',
-        rawTitle: ''
-      });
-
-      const delayMs = Math.max(0, Number(this.options.transitionDelayMs || 12000));
+      // Exibir placeholder com logotipo e nome do programa. Aguarda
+      // conclusão pois a leitura da programação pode envolver fetch.
+      await this._showPlaceholder();
+      const immediate = this.parseRawTitle(raw);
+      // Iniciar a resolução do Deezer em paralelo.
+      const resolvePromise = this.resolveTrackMetadata(raw).catch(() => immediate);
       return new Promise((resolve) => {
-        this.state.pendingTransitionTimer = setTimeout(async () => {
-          this.state.pendingTransitionTimer = null;
-          if (token !== this.state.pendingTransitionToken) {
-            resolve(null);
-            return;
-          }
-
-          const resolved = await resolvedPromise;
-          if (token !== this.state.pendingTransitionToken) {
-            resolve(null);
-            return;
-          }
-
+        this.state.pendingTimer = setTimeout(async () => {
+          const resolved = await resolvePromise;
           this._render({
             song: resolved.song || immediate.song || raw,
             artist: resolved.artist || immediate.artist || '',
             cover: resolved.cover || this.options.defaultCover || '',
             rawTitle: raw
           });
-          this.state.hasDisplayedTrack = true;
+          this.state.pendingTimer = null;
           resolve(resolved);
-        }, delayMs);
+        }, 12000);
       });
     }
 
@@ -306,61 +277,6 @@
       this._log('EventSource error:', err);
     }
 
-    _clearPendingTransition() {
-      if (this.state.pendingTransitionTimer) {
-        clearTimeout(this.state.pendingTransitionTimer);
-        this.state.pendingTransitionTimer = null;
-      }
-    }
-
-    async _getCurrentProgramDisplay() {
-      const fallbackTitle = this.options.stationName || this.options.textFallback || 'Ao vivo';
-      if (!this.options.schedule || !this.options.schedule.enabled) {
-        return { title: fallbackTitle };
-      }
-
-      try {
-        const items = await this._loadScheduleItems();
-        const active = findCurrentProgramFromSchedule(items);
-        return { title: (active && cleanupMetadataChunk(active.title)) || fallbackTitle };
-      } catch (err) {
-        this._log('Falha ao obter programa atual:', err);
-        return { title: fallbackTitle };
-      }
-    }
-
-    async _loadScheduleItems() {
-      if (Array.isArray(this.state.scheduleCache)) return this.state.scheduleCache;
-      if (this.state.schedulePromise) return this.state.schedulePromise;
-
-      const scheduleUrl = this.options.schedule && this.options.schedule.url
-        ? String(this.options.schedule.url)
-        : 'programas/programacao.json';
-      const programField = this.options.schedule && this.options.schedule.programField
-        ? String(this.options.schedule.programField)
-        : 'programas';
-
-      this.state.schedulePromise = fetch(scheduleUrl, { cache: 'no-store' })
-        .then(function (response) {
-          if (!response.ok) {
-            throw new Error('HTTP ' + response.status + ' ao carregar programação');
-          }
-          return response.json();
-        })
-        .then((payload) => {
-          const items = payload && Array.isArray(payload[programField]) ? payload[programField] : [];
-          this.state.scheduleCache = items;
-          this.state.schedulePromise = null;
-          return items;
-        })
-        .catch((err) => {
-          this.state.schedulePromise = null;
-          throw err;
-        });
-
-      return this.state.schedulePromise;
-    }
-
     _ensureMounted() {
       if (this.state.root) return;
 
@@ -414,6 +330,141 @@
           this._log('onUpdate falhou:', err);
         }
       }
+    }
+
+    /*
+     * Este espaço era ocupado por uma documentação antiga do método de
+     * placeholder. Foi mantido um comentário simples para preservar a
+     * estrutura do arquivo. A documentação atualizada encontra-se
+     * imediatamente acima do método _showPlaceholder().
+     */
+    /**
+     * Exibe temporariamente o logotipo da rádio e o nome do programa atual.
+     * Em vez de ler elementos de grade na página, determina o programa
+     * atual com base na programação definida em programas/programacao.json.
+     * Caso não seja possível determinar o programa, usa o nome da estação
+     * ou o texto fallback configurado. Este método é assíncrono pois
+     * pode realizar um fetch da programação.
+     */
+    async _showPlaceholder() {
+      let title = '';
+      try {
+        const current = await this._getCurrentProgram();
+        if (current && current.title) {
+          title = String(current.title || '').trim();
+        }
+      } catch (_error) {
+        // Se houver erro ao carregar a programação, cairemos para o nome padrão
+      }
+      if (!title) {
+        // Se não conseguir determinar o programa atual, usa o nome da estação ou fallback.
+        title = this.options.stationName || this.options.textFallback || 'Ao vivo';
+      }
+      // Renderizar placeholder com a capa padrão. O nome do programa vai na
+      // posição de "song" e não exibimos artista neste modo.
+      this._render({
+        song: title,
+        artist: '',
+        cover: this.options.defaultCover || '',
+        rawTitle: ''
+      });
+    }
+
+    /**
+     * Converte uma string HH:MM para o número de minutos desde 00:00. Se o
+     * formato for inválido, retorna null.
+     * @param {string} hhmm
+     * @returns {number|null}
+     */
+    _timeToMinutes(hhmm) {
+      const m = String(hhmm || '').match(/^(\d{1,2}):(\d{2})$/);
+      if (!m) return null;
+      return Number(m[1]) * 60 + Number(m[2]);
+    }
+
+    /**
+     * Carrega e retorna a programação a partir de um arquivo JSON. Por padrão
+     * usa 'programas/programacao.json', mas pode ser sobrescrito via
+     * options.programsSrc. Implementa cache simples para evitar múltiplos
+     * downloads e suporta chamadas concorrentes.
+     * @returns {Promise<Array<{title: string, host: string, start: string, end: string, dias: string[]}>>}
+     */
+    _loadSchedule() {
+      // Se já carregado, retorna imediatamente.
+      if (this.state.programSchedule) {
+        return Promise.resolve(this.state.programSchedule);
+      }
+      // Se uma requisição já estiver em andamento, reutiliza a promessa.
+      if (this.state.scheduleFetchPromise) {
+        return this.state.scheduleFetchPromise;
+      }
+      const src = this.options.programsSrc || 'programas/programacao.json';
+      const url = src;
+      this.state.scheduleFetchPromise = fetch(url)
+        .then((res) => {
+          if (!res.ok) {
+            throw new Error('Falha ao carregar programação');
+          }
+          return res.json();
+        })
+        .then((data) => {
+          const programas = Array.isArray(data.programas) ? data.programas : [];
+          const normalized = programas.map((item) => ({
+            title: String(item.title || item.programa || '').trim(),
+            host: String(item.host || item.locutor || '').trim(),
+            start: String(item.start || item.inicio || '').trim(),
+            end: String(item.end || item.fim || '').trim(),
+            dias: Array.isArray(item.diaDaSemana) ? item.diaDaSemana.map((d) => String(d).toLowerCase()) : []
+          }));
+          this.state.programSchedule = normalized;
+          return normalized;
+        })
+        .catch((err) => {
+          // Em caso de erro, limpamos o cache para permitir novas tentativas futuramente.
+          this.state.programSchedule = null;
+          throw err;
+        })
+        .finally(() => {
+          // Limpa a promessa em andamento, permitindo novas requisições.
+          this.state.scheduleFetchPromise = null;
+        });
+      return this.state.scheduleFetchPromise;
+    }
+
+    /**
+     * Determina o programa atual com base na programação e no horário local.
+     * Se nenhum programa coincidir, retorna null. O horário é calculado com
+     * base no relógio do navegador.
+     * @returns {Promise<{title: string, host: string}|null>}
+     */
+    async _getCurrentProgram() {
+      const schedule = await this._loadSchedule().catch(() => null);
+      if (!schedule || !Array.isArray(schedule) || schedule.length === 0) return null;
+      const weekdayMap = ['dom', 'seg', 'ter', 'quar', 'qui', 'sex', 'sab'];
+      const now = new Date();
+      const weekday = weekdayMap[now.getDay()];
+      const minutes = now.getHours() * 60 + now.getMinutes();
+      let current = null;
+      schedule.forEach((item) => {
+        if (!item || !item.start || !item.end) return;
+        const dias = Array.isArray(item.dias) ? item.dias : [];
+        if (dias.indexOf(weekday) === -1) return;
+        const startMinutes = this._timeToMinutes(item.start);
+        let endMinutes = this._timeToMinutes(item.end);
+        if (startMinutes === null || endMinutes === null) return;
+        // Programas que atravessam a meia-noite
+        if (endMinutes <= startMinutes) {
+          endMinutes += 24 * 60;
+        }
+        let currentMinutes = minutes;
+        if (currentMinutes < startMinutes) {
+          currentMinutes += 24 * 60;
+        }
+        if (currentMinutes >= startMinutes && currentMinutes < endMinutes) {
+          current = { title: item.title || '', host: item.host || '' };
+        }
+      });
+      return current;
     }
 
     _log() {
@@ -814,107 +865,6 @@
       cover: bestCover
     };
   }
-
-  function findCurrentProgramFromSchedule(items, now) {
-    if (!Array.isArray(items) || !items.length) return null;
-
-    const reference = now instanceof Date ? now : new Date();
-    const parts = getBrazilNowParts(reference);
-    const todayCode = mapWeekdayToScheduleCode(parts.weekday);
-    const yesterdayCode = mapWeekdayToScheduleCode((parts.weekday + 6) % 7);
-    const minutesNow = (parts.hours * 60) + parts.minutes;
-
-    let best = null;
-
-    items.forEach(function (item) {
-      const days = normalizeScheduleDays(item && item.diaDaSemana);
-      const startMinutes = parseTimeToMinutes(item && item.start);
-      const endMinutes = parseTimeToMinutes(item && item.end);
-      if (!days.length || startMinutes < 0 || endMinutes < 0) return;
-
-      const crossesMidnight = endMinutes < startMinutes;
-      let matches = false;
-      let distance = Number.POSITIVE_INFINITY;
-
-      if (!crossesMidnight) {
-        matches = days.indexOf(todayCode) >= 0 && minutesNow >= startMinutes && minutesNow <= endMinutes;
-        if (matches) distance = minutesNow - startMinutes;
-      } else {
-        const matchesTodaySegment = days.indexOf(todayCode) >= 0 && minutesNow >= startMinutes;
-        const matchesYesterdaySegment = days.indexOf(yesterdayCode) >= 0 && minutesNow <= endMinutes;
-        matches = matchesTodaySegment || matchesYesterdaySegment;
-        if (matchesTodaySegment) {
-          distance = minutesNow - startMinutes;
-        } else if (matchesYesterdaySegment) {
-          distance = (minutesNow + 1440) - startMinutes;
-        }
-      }
-
-      if (!matches) return;
-      if (!best || distance < best.distance) {
-        best = { item: item, distance: distance };
-      }
-    });
-
-    return best ? best.item : null;
-  }
-
-  function getBrazilNowParts(date) {
-    const formatter = new Intl.DateTimeFormat('pt-BR', {
-      timeZone: 'America/Sao_Paulo',
-      weekday: 'short',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false
-    });
-    const mapped = { weekday: 0, hours: 0, minutes: 0 };
-    formatter.formatToParts(date).forEach(function (part) {
-      if (part.type === 'weekday') mapped.weekday = mapIntlWeekday(part.value);
-      if (part.type === 'hour') mapped.hours = Number(part.value || 0);
-      if (part.type === 'minute') mapped.minutes = Number(part.value || 0);
-    });
-    return mapped;
-  }
-
-  function mapIntlWeekday(value) {
-    const key = compactComparable(value || '');
-    if (key.indexOf('seg') === 0) return 1;
-    if (key.indexOf('ter') === 0) return 2;
-    if (key.indexOf('qua') === 0) return 3;
-    if (key.indexOf('qui') === 0) return 4;
-    if (key.indexOf('sex') === 0) return 5;
-    if (key.indexOf('sab') === 0) return 6;
-    return 0;
-  }
-
-  function mapWeekdayToScheduleCode(weekday) {
-    return ['dom', 'seg', 'ter', 'quar', 'qui', 'sex', 'sab'][Number(weekday) || 0] || 'dom';
-  }
-
-  function normalizeScheduleDays(days) {
-    if (!Array.isArray(days)) return [];
-    return days.map(function (day) {
-      const key = compactComparable(day || '');
-      if (key.indexOf('seg') === 0) return 'seg';
-      if (key.indexOf('ter') === 0) return 'ter';
-      if (key.indexOf('qua') === 0) return 'quar';
-      if (key.indexOf('qui') === 0) return 'qui';
-      if (key.indexOf('sex') === 0) return 'sex';
-      if (key.indexOf('sab') === 0) return 'sab';
-      if (key.indexOf('dom') === 0) return 'dom';
-      return '';
-    }).filter(Boolean);
-  }
-
-  function parseTimeToMinutes(value) {
-    const match = String(value || '').trim().match(/^(\d{1,2}):(\d{2})$/);
-    if (!match) return -1;
-    const hours = Number(match[1]);
-    const minutes = Number(match[2]);
-    if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return -1;
-    return (hours * 60) + minutes;
-  }
-
 
   global.UniversalRadioMetadata = UniversalRadioMetadata;
 })(window);
