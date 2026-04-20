@@ -89,33 +89,37 @@ html.re-dark-theme, body.re-dark-theme { --re-page-bg: var(--re-page-bg-dark); -
   align-items:stretch;
   justify-content:center;
   overflow:hidden;
-  backdrop-filter:blur(1px);
 }
 .re-vu-stereo {
   width:100%;
   height:100%;
   display:flex;
   align-items:stretch;
-  gap:3px;
+  gap:2px;
 }
 .re-vu-channel {
   flex:1 1 0;
   min-width:0;
   display:flex;
   flex-direction:column-reverse;
-  gap:2px;
+  gap:1px;
 }
 .re-vu-bar {
   flex:1 1 0;
   border-radius:2px;
-  background:#20304b;
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.08);
-  transition:background .08s linear, filter .08s linear, opacity .08s linear;
-  opacity:.68;
+  background:#1e2a43;
+  opacity:.72;
+  transition:opacity .08s linear, background-color .08s linear;
 }
 .re-vu-bar.is-active {
   opacity:1;
-  filter:drop-shadow(0 0 4px rgba(255,255,255,.12));
+  background:#22c55e;
+}
+.re-vu-bar.is-active.is-warn {
+  background:#facc15;
+}
+.re-vu-bar.is-active.is-hot {
+  background:#ef4444;
 }
 .re-type-theme-toggle, .re-type-theme-toggle-alt, .re-type-theme-icon { display:flex; align-items:center; justify-content:center; }
 .re-theme-toggle-btn { width:100%; height:100%; border:none; background:transparent; color:inherit; cursor:pointer; display:block; padding:0; position:relative; }

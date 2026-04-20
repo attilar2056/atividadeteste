@@ -498,27 +498,12 @@
       if (!engine.sourceNode) engine.sourceNode = engine.audioContext.createMediaElementSource(engine.audio);
 
       engine.analyserNode = engine.audioContext.createAnalyser();
-      engine.analyserNode.fftSize = 256;
-      engine.analyserNode.smoothingTimeConstant = 0.76;
+      engine.analyserNode.fftSize = 128;
+      engine.analyserNode.smoothingTimeConstant = 0.72;
       engine.frequencyData = new Uint8Array(engine.analyserNode.frequencyBinCount);
       engine.timeData = new Uint8Array(engine.analyserNode.fftSize);
       engine.sourceNode.connect(engine.analyserNode);
       engine.analyserNode.connect(engine.audioContext.destination);
-
-      engine.channelSplitter = engine.audioContext.createChannelSplitter(2);
-      engine.leftAnalyserNode = engine.audioContext.createAnalyser();
-      engine.rightAnalyserNode = engine.audioContext.createAnalyser();
-      engine.leftAnalyserNode.fftSize = 256;
-      engine.rightAnalyserNode.fftSize = 256;
-      engine.leftAnalyserNode.smoothingTimeConstant = 0.38;
-      engine.rightAnalyserNode.smoothingTimeConstant = 0.38;
-      engine.leftFrequencyData = new Uint8Array(engine.leftAnalyserNode.frequencyBinCount);
-      engine.rightFrequencyData = new Uint8Array(engine.rightAnalyserNode.frequencyBinCount);
-      engine.leftTimeData = new Uint8Array(engine.leftAnalyserNode.fftSize);
-      engine.rightTimeData = new Uint8Array(engine.rightAnalyserNode.fftSize);
-      engine.sourceNode.connect(engine.channelSplitter);
-      engine.channelSplitter.connect(engine.leftAnalyserNode, 0);
-      engine.channelSplitter.connect(engine.rightAnalyserNode, 1);
       return true;
     } catch (_error) {
       engine.analyserUnavailable = true;
@@ -676,9 +661,12 @@
   function bindVUMeter(engine) {
     var vuElement = document.querySelector('.re-type-vu-meter');
     if (!vuElement) return;
+    if (vuElement.__vuBound) return;
+    vuElement.__vuBound = true;
 
-    var BAR_COUNT = 15;
-    var inactiveColor = '#20304b';
+    var BAR_COUNT = 10;
+    var FRAME_MS = 95;
+    var BG_FRAME_MS = 420;
 
     function buildChannelMarkup(label) {
       var html = '<div class="re-vu-channel" data-channel="' + label + '">';
@@ -689,119 +677,152 @@
       return html;
     }
 
-    if (!vuElement.getAttribute('data-stereo-ready')) {
-      vuElement.setAttribute('data-stereo-ready', 'true');
-      vuElement.innerHTML = '<div class="re-vu-stereo">' + buildChannelMarkup('left') + buildChannelMarkup('right') + '</div>';
-    }
+    vuElement.setAttribute('data-stereo-ready', 'true');
+    vuElement.innerHTML = '<div class="re-vu-stereo">' + buildChannelMarkup('left') + buildChannelMarkup('right') + '</div>';
+    vuElement.classList.add('re-vu-meter-stereo');
 
     var leftBars = Array.prototype.slice.call(vuElement.querySelectorAll('.re-vu-channel[data-channel="left"] .re-vu-bar'));
     var rightBars = Array.prototype.slice.call(vuElement.querySelectorAll('.re-vu-channel[data-channel="right"] .re-vu-bar'));
-    vuElement.classList.add('re-vu-meter-stereo');
 
     function ensureVUState() {
       if (!engine.vuState) {
         engine.vuState = {
           left: 0,
           right: 0,
-          leftRef: 0.17,
-          rightRef: 0.17
+          leftRef: 0.12,
+          rightRef: 0.12,
+          lastLeftLit: -1,
+          lastRightLit: -1,
+          lastPaintAt: 0,
+          timerId: null
         };
       }
       return engine.vuState;
     }
 
-    function sampleChannelLevel(analyserNode, timeData, frequencyData) {
-      if (!analyserNode || !timeData || !frequencyData) return 0;
+    function sampleStereoLite() {
+      if (!engine || !engine.analyserNode || !engine.frequencyData || !engine.timeData) {
+        return { left: 0, right: 0 };
+      }
+
       try {
-        analyserNode.getByteTimeDomainData(timeData);
-        analyserNode.getByteFrequencyData(frequencyData);
+        engine.analyserNode.getByteFrequencyData(engine.frequencyData);
+        engine.analyserNode.getByteTimeDomainData(engine.timeData);
       } catch (_error) {
-        return 0;
+        return { left: 0, right: 0 };
       }
 
       var rms = 0;
       var peak = 0;
-      for (var i = 0; i < timeData.length; i += 1) {
-        var centered = Math.abs((timeData[i] - 128) / 128);
+      for (var i = 0; i < engine.timeData.length; i += 2) {
+        var centered = Math.abs((engine.timeData[i] - 128) / 128);
         rms += centered * centered;
         if (centered > peak) peak = centered;
       }
-      rms = Math.sqrt(rms / Math.max(1, timeData.length));
+      rms = Math.sqrt(rms / Math.max(1, Math.ceil(engine.timeData.length / 2)));
 
       var lowSum = 0;
-      var midSum = 0;
-      var lowCount = Math.min(18, frequencyData.length);
-      var midCount = Math.min(52, frequencyData.length);
-      for (var j = 0; j < lowCount; j += 1) lowSum += frequencyData[j];
-      for (var k = 0; k < midCount; k += 1) midSum += frequencyData[k];
-      var lowAvg = (lowSum / Math.max(1, lowCount)) / 255;
-      var midAvg = (midSum / Math.max(1, midCount)) / 255;
+      var midLowSum = 0;
+      var midHighSum = 0;
+      var highSum = 0;
+      var lowCount = 0;
+      var midLowCount = 0;
+      var midHighCount = 0;
+      var highCount = 0;
 
-      var raw = (rms * 0.58) + (peak * 0.18) + (lowAvg * 0.16) + (midAvg * 0.08);
-      raw = Math.max(0, raw - 0.012);
-      return Math.min(1, raw);
+      for (var j = 0; j < engine.frequencyData.length; j += 1) {
+        var value = engine.frequencyData[j];
+        if (j < 8) {
+          lowSum += value;
+          lowCount += 1;
+        } else if (j < 18) {
+          midLowSum += value;
+          midLowCount += 1;
+        } else if (j < 34) {
+          midHighSum += value;
+          midHighCount += 1;
+        } else if (j < 56) {
+          highSum += value;
+          highCount += 1;
+        }
+      }
+
+      var lowAvg = (lowSum / Math.max(1, lowCount)) / 255;
+      var midLowAvg = (midLowSum / Math.max(1, midLowCount)) / 255;
+      var midHighAvg = (midHighSum / Math.max(1, midHighCount)) / 255;
+      var highAvg = (highSum / Math.max(1, highCount)) / 255;
+      var base = Math.max(0, (rms * 0.44) + (peak * 0.18) + (midLowAvg * 0.2) + (midHighAvg * 0.1) - 0.02);
+
+      return {
+        left: Math.min(1, Math.max(0, (base * 0.72) + (lowAvg * 0.18) + (midLowAvg * 0.12))),
+        right: Math.min(1, Math.max(0, (base * 0.72) + (highAvg * 0.18) + (midHighAvg * 0.12)))
+      };
     }
 
     function normalizeChannelLevel(rawLevel, refKey, valueKey) {
       var state = ensureVUState();
       if (rawLevel >= state[refKey]) state[refKey] = rawLevel;
-      else state[refKey] = Math.max(0.17, state[refKey] * 0.9925);
+      else state[refKey] = Math.max(0.12, state[refKey] * 0.989);
 
-      var reference = Math.max(0.17, state[refKey] * 1.16);
+      var reference = Math.max(0.12, state[refKey] * 1.28);
       var target = Math.min(1, rawLevel / reference);
-      target = Math.pow(Math.max(0, target), 0.92);
-      var blend = target > state[valueKey] ? 0.42 : 0.14;
+      target = Math.pow(Math.max(0, target), 1.15);
+      var blend = target > state[valueKey] ? 0.34 : 0.16;
       state[valueKey] += (target - state[valueKey]) * blend;
       return Math.max(0, Math.min(1, state[valueKey]));
     }
 
-    function paintChannel(bars, level) {
-      var lit = Math.max(0, Math.min(BAR_COUNT, Math.round(level * BAR_COUNT)));
+    function paintChannel(bars, lit, lastKey) {
+      var state = ensureVUState();
+      if (state[lastKey] === lit) return;
+      state[lastKey] = lit;
       bars.forEach(function (bar, index) {
-        if (index < lit) {
-          if (index < BAR_COUNT - 5) bar.style.background = '#22c55e';
-          else if (index < BAR_COUNT - 2) bar.style.background = '#facc15';
-          else bar.style.background = '#ef4444';
-          bar.classList.add('is-active');
-        } else {
-          bar.style.background = inactiveColor;
-          bar.classList.remove('is-active');
-        }
+        var active = index < lit;
+        bar.classList.toggle('is-active', active);
+        bar.classList.toggle('is-warn', active && index >= BAR_COUNT - 3 && index < BAR_COUNT - 1);
+        bar.classList.toggle('is-hot', active && index >= BAR_COUNT - 1);
       });
+    }
+
+    function paintFromLevels(leftLevel, rightLevel) {
+      paintChannel(leftBars, Math.max(0, Math.min(BAR_COUNT, Math.round(leftLevel * BAR_COUNT))), 'lastLeftLit');
+      paintChannel(rightBars, Math.max(0, Math.min(BAR_COUNT, Math.round(rightLevel * BAR_COUNT))), 'lastRightLit');
     }
 
     function fadeToIdle() {
       var state = ensureVUState();
-      state.left *= 0.84;
-      state.right *= 0.84;
-      paintChannel(leftBars, state.left);
-      paintChannel(rightBars, state.right);
+      state.left *= 0.8;
+      state.right *= 0.8;
+      if (state.left < 0.01) state.left = 0;
+      if (state.right < 0.01) state.right = 0;
+      paintFromLevels(state.left, state.right);
+    }
+
+    function scheduleNext() {
+      var state = ensureVUState();
+      clearTimeout(state.timerId);
+      state.timerId = setTimeout(updateVU, document.hidden ? BG_FRAME_MS : FRAME_MS);
     }
 
     function updateVU() {
-      if (!engine.wantPlay || engine.audio.paused || engine.audio.ended) {
+      var state = ensureVUState();
+      if (!engine.wantPlay || engine.audio.paused || engine.audio.ended || document.hidden) {
         fadeToIdle();
-        requestAnimationFrame(updateVU);
+        scheduleNext();
         return;
       }
 
       if (ensureAudioAnalyser(engine)) {
-        var leftRaw = sampleChannelLevel(engine.leftAnalyserNode, engine.leftTimeData, engine.leftFrequencyData);
-        var rightRaw = sampleChannelLevel(engine.rightAnalyserNode, engine.rightTimeData, engine.rightFrequencyData);
-
-        if (rightRaw < 0.02 && leftRaw > 0.04) rightRaw = leftRaw * 0.97;
-        if (leftRaw < 0.02 && rightRaw > 0.04) leftRaw = rightRaw * 0.97;
-
-        var leftLevel = normalizeChannelLevel(leftRaw, 'leftRef', 'left');
-        var rightLevel = normalizeChannelLevel(rightRaw, 'rightRef', 'right');
-
-        paintChannel(leftBars, leftLevel);
-        paintChannel(rightBars, rightLevel);
+        var stereo = sampleStereoLite();
+        var leftLevel = normalizeChannelLevel(stereo.left, 'leftRef', 'left');
+        var rightLevel = normalizeChannelLevel(stereo.right, 'rightRef', 'right');
+        paintFromLevels(leftLevel, rightLevel);
       } else {
         fadeToIdle();
       }
 
-      requestAnimationFrame(updateVU);
+      state.lastPaintAt = Date.now();
+      scheduleNext();
     }
 
     updateVU();

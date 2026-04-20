@@ -111,11 +111,6 @@
         this.state.pendingTimer = null;
       }
 
-      // Se a página estiver oculta, não precisamos fazer nada pesado agora
-      if (document.hidden) {
-        return null;
-      }
-
       await this._showPlaceholder();
       const immediate = this.parseRawTitle(raw);
       
@@ -124,13 +119,6 @@
       
       return new Promise((resolve) => {
         this.state.pendingTimer = setTimeout(async () => {
-          // Verifica novamente se a página está visível antes de renderizar
-          if (document.hidden) {
-            this.state.pendingTimer = null;
-            resolve(null);
-            return;
-          }
-
           const resolved = await resolvePromise;
           this._render({
             song: resolved.song || immediate.song || raw,
