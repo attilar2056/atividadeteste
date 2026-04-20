@@ -1,0 +1,882 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Programação da Rádio</title>
+  <style>
+    :root {
+      --bg: #f3f6fb;
+      --card: #ffffff;
+      --line: #d8e0ec;
+      --text: #132238;
+      --muted: #5a6b85;
+      --accent: #305fbd;
+      --accent-dark: #264a94;
+      --danger: #c53939;
+      --empty: #f7f9fc;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: Arial, Helvetica, sans-serif;
+    }
+
+    .page {
+      width: min(1240px, calc(100% - 24px));
+      margin: 0 auto;
+      padding: 16px 0 28px;
+    }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 14px;
+      padding: 14px 16px;
+      background: rgba(243, 246, 251, 0.96);
+      border-bottom: 1px solid var(--line);
+      backdrop-filter: blur(8px);
+    }
+
+    .topbar h1 {
+      margin: 0;
+      font-size: 26px;
+    }
+
+    .topbar p {
+      margin: 4px 0 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+    }
+
+    button {
+      border: 0;
+      border-radius: 12px;
+      padding: 11px 15px;
+      background: var(--accent);
+      color: #fff;
+      font-weight: 700;
+      cursor: pointer;
+      font-size: 14px;
+    }
+
+    button.secondary { background: #70819a; }
+    button.danger { background: var(--danger); }
+    button.ghost {
+      background: transparent;
+      color: var(--accent);
+      border: 1px solid var(--accent);
+    }
+
+    .status {
+      min-height: 48px;
+      display: flex;
+      align-items: center;
+      margin-bottom: 14px;
+      padding: 12px 14px;
+      border-radius: 14px;
+      background: #fff;
+      border: 1px solid var(--line);
+      color: var(--muted);
+    }
+
+    .day-section {
+      margin-bottom: 18px;
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      overflow: hidden;
+    }
+
+    .day-header {
+      padding: 14px 16px;
+      font-size: 24px;
+      font-weight: 700;
+      background: #eef3fb;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .list {
+      display: grid;
+      gap: 10px;
+      padding: 12px;
+    }
+
+    .item {
+      width: 100%;
+      display: grid;
+      grid-template-columns: 128px minmax(0, 1fr);
+      gap: 14px;
+      align-items: center;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: #fff;
+      cursor: pointer;
+      text-align: left;
+    }
+
+    .item.empty {
+      background: var(--empty);
+    }
+
+    .thumb {
+      width: 128px;
+      height: 128px;
+      border-radius: 14px;
+      object-fit: cover;
+      background: #e9eef6;
+      border: 1px solid var(--line);
+      display: block;
+    }
+
+    .thumb-placeholder {
+      width: 128px;
+      height: 128px;
+      border-radius: 14px;
+      border: 1px dashed #b7c4d8;
+      background: #eef3fb;
+      display: grid;
+      place-items: center;
+      color: #7c8ca3;
+      font-size: 14px;
+      text-align: center;
+      padding: 10px;
+    }
+
+    .item-title {
+      font-size: 24px;
+      font-weight: 700;
+      margin-bottom: 6px;
+      color: var(--text);
+    }
+
+    .item.empty .item-title {
+      color: #5f6f88;
+    }
+
+    .item-line {
+      font-size: 16px;
+      color: var(--muted);
+      margin-bottom: 5px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--accent-dark);
+      background: #eaf1ff;
+      border: 1px solid #c8d9ff;
+    }
+
+    .badge.empty {
+      color: #6b7b92;
+      background: #edf2f8;
+      border-color: #d5deea;
+    }
+
+    .overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(19, 34, 56, 0.55);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      z-index: 100;
+    }
+
+    .overlay.open {
+      display: flex;
+    }
+
+    .modal {
+      width: min(760px, 100%);
+      background: #fff;
+      color: var(--text);
+      border-radius: 20px;
+      border: 1px solid var(--line);
+      box-shadow: 0 20px 80px rgba(18, 37, 63, 0.28);
+      overflow: hidden;
+    }
+
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: center;
+      padding: 16px 18px;
+      border-bottom: 1px solid var(--line);
+      background: #eef3fb;
+    }
+
+    .modal-header h2 {
+      margin: 0;
+      font-size: 24px;
+    }
+
+    .modal-body {
+      padding: 16px 18px 18px;
+    }
+
+    .action-stack,
+    .form-grid {
+      display: grid;
+      gap: 12px;
+    }
+
+    .action-stack button {
+      width: 100%;
+      justify-content: center;
+    }
+
+    .form-grid {
+      grid-template-columns: 160px minmax(0, 1fr) minmax(0, 1fr);
+      align-items: start;
+    }
+
+    .preview-box {
+      display: grid;
+      gap: 8px;
+      align-content: start;
+    }
+
+    .preview-box .thumb,
+    .preview-box .thumb-placeholder {
+      width: 160px;
+      height: 160px;
+    }
+
+    .preview-caption {
+      font-size: 12px;
+      color: var(--muted);
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .preview-box .thumb.vinyl-thumb,
+    .preview-box .thumb-placeholder.vinyl-thumb {
+      width: 120px;
+      height: 120px;
+      border-radius: 999px;
+      margin: 0 auto;
+    }
+
+    .field {
+      display: grid;
+      gap: 6px;
+    }
+
+    .field.full {
+      grid-column: 2 / 4;
+    }
+
+    .field label {
+      font-size: 14px;
+      font-weight: 700;
+      color: #30445f;
+    }
+
+    .field input[type="text"],
+    .field input[type="time"],
+    .field input[type="number"] {
+      width: 100%;
+      padding: 11px 12px;
+      border-radius: 12px;
+      border: 1px solid #cfd9e7;
+      background: #fff;
+      color: var(--text);
+      font-size: 14px;
+      outline: none;
+    }
+
+    .field input:focus {
+      border-color: #6a94e6;
+      box-shadow: 0 0 0 3px rgba(48, 95, 189, 0.12);
+    }
+
+    .form-actions {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      margin-top: 16px;
+      flex-wrap: wrap;
+    }
+
+    .muted {
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    @media (max-width: 760px) {
+      .item {
+        grid-template-columns: 92px minmax(0, 1fr);
+      }
+
+      .thumb,
+      .thumb-placeholder {
+        width: 92px;
+        height: 92px;
+      }
+
+      .item-title {
+        font-size: 18px;
+      }
+
+      .item-line {
+        font-size: 14px;
+      }
+
+      .form-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .field.full {
+        grid-column: auto;
+      }
+
+      .preview-box .thumb,
+      .preview-box .thumb-placeholder {
+        width: 128px;
+        height: 128px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="topbar">
+      <div>
+        <h1>Grade de programação</h1>
+        <p>Clique em qualquer item da lista para editar ou deletar. Horários vazios também aparecem e podem virar programa.</p>
+      </div>
+      <div class="controls">
+        <button id="reloadButton" class="secondary">Recarregar</button>
+      </div>
+    </div>
+
+    <div id="status" class="status">Carregando programação...</div>
+    <div id="daysContainer"></div>
+  </div>
+
+  <div id="choiceOverlay" class="overlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 id="choiceTitle">Ações</h2>
+        <button class="ghost" data-close-choice>Fechar</button>
+      </div>
+      <div class="modal-body">
+        <div id="choiceSummary" class="muted" style="margin-bottom:12px"></div>
+        <div class="action-stack">
+          <button id="editChoiceButton">Editar</button>
+          <button id="deleteChoiceButton" class="danger">Deletar</button>
+          <button class="secondary" data-close-choice>Cancelar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="editOverlay" class="overlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 id="editTitle">Editar programa</h2>
+        <button class="ghost" data-close-edit>Fechar</button>
+      </div>
+      <div class="modal-body">
+        <form id="editForm">
+          <div class="form-grid">
+            <div class="preview-box">
+              <div class="preview-caption">Foto do programa</div>
+              <div id="imagePreviewWrap"></div>
+              <div class="preview-caption" style="margin-top:8px">Vinyl do programa</div>
+              <div id="vinylPreviewWrap"></div>
+              <div class="muted" id="editDayLabel"></div>
+            </div>
+
+            <div class="field">
+              <label for="programTitle">Programa</label>
+              <input id="programTitle" name="programTitle" type="text" required />
+            </div>
+
+            <div class="field">
+              <label for="programLocutor">Locutor</label>
+              <input id="programLocutor" name="programLocutor" type="text" />
+            </div>
+
+            <div class="field">
+              <label for="programStart">Horário inicial</label>
+              <input id="programStart" name="programStart" type="time" required />
+            </div>
+
+            <div class="field">
+              <label for="programEnd">Horário final</label>
+              <input id="programEnd" name="programEnd" type="time" required />
+            </div>
+
+            <div class="field full">
+              <label for="programImage">Imagem atual</label>
+              <input id="programImage" name="programImage" type="text" placeholder="assets/uploads/minha-imagem.png" />
+            </div>
+
+            <div class="field full">
+              <label for="programFile">Escolher nova foto</label>
+              <input id="programFile" name="programFile" type="file" accept="image/*" />
+            </div>
+
+            <div class="field full">
+              <label for="programVinyl">Vinyl atual</label>
+              <input id="programVinyl" name="programVinyl" type="text" placeholder="assets/base/vinyl.png" />
+              <div class="muted">Se deixar vazio, o site usa automaticamente <strong>assets/base/vinyl.png</strong>.</div>
+            </div>
+
+            <div class="field full">
+              <label for="vinylFile">Escolher novo vinyl</label>
+              <input id="vinylFile" name="vinylFile" type="file" accept="image/*" />
+            </div>
+
+            <div class="field">
+              <label for="photoX">photoX</label>
+              <input id="photoX" name="photoX" type="number" step="0.1" />
+            </div>
+
+            <div class="field">
+              <label for="photoY">photoY</label>
+              <input id="photoY" name="photoY" type="number" step="0.1" />
+            </div>
+
+            <div class="field">
+              <label for="photoZoom">photoZoom</label>
+              <input id="photoZoom" name="photoZoom" type="number" step="0.1" min="0" />
+            </div>
+          </div>
+
+          <div class="form-actions">
+            <button type="button" class="secondary" data-close-edit>Cancelar</button>
+            <button type="submit" id="saveButton">Salvar alterações</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const state = {
+      schedule: null,
+      selectedItem: null,
+      pendingFilePath: ''
+    };
+
+    const daysContainer = document.getElementById('daysContainer');
+    const statusBox = document.getElementById('status');
+    const reloadButton = document.getElementById('reloadButton');
+    const choiceOverlay = document.getElementById('choiceOverlay');
+    const editOverlay = document.getElementById('editOverlay');
+    const choiceTitle = document.getElementById('choiceTitle');
+    const choiceSummary = document.getElementById('choiceSummary');
+    const editTitle = document.getElementById('editTitle');
+    const editDayLabel = document.getElementById('editDayLabel');
+    const deleteChoiceButton = document.getElementById('deleteChoiceButton');
+    const editChoiceButton = document.getElementById('editChoiceButton');
+    const imagePreviewWrap = document.getElementById('imagePreviewWrap');
+    const vinylPreviewWrap = document.getElementById('vinylPreviewWrap');
+    const programTitle = document.getElementById('programTitle');
+    const programLocutor = document.getElementById('programLocutor');
+    const programStart = document.getElementById('programStart');
+    const programEnd = document.getElementById('programEnd');
+    const programImage = document.getElementById('programImage');
+    const programFile = document.getElementById('programFile');
+    const programVinyl = document.getElementById('programVinyl');
+    const vinylFile = document.getElementById('vinylFile');
+    const photoX = document.getElementById('photoX');
+    const photoY = document.getElementById('photoY');
+    const photoZoom = document.getElementById('photoZoom');
+    const saveButton = document.getElementById('saveButton');
+    const editForm = document.getElementById('editForm');
+
+async function postJson(url, payload) {
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload || {})
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || !result || result.ok === false) {
+    throw new Error((result && result.error) || 'Falha na requisição.');
+  }
+  return result.data;
+}
+
+function formatSuggestionLabels(items) {
+  return (Array.isArray(items) ? items : [])
+    .map((item) => item && item.label)
+    .filter(Boolean)
+    .join(', ');
+}
+
+async function saveItemWithDaySuggestions(payload) {
+  const suggestions = await postJson('/api/admin/suggest-save-days', payload);
+  const finalPayload = { ...payload };
+
+  if (Array.isArray(suggestions) && suggestions.length) {
+    const labels = formatSuggestionLabels(suggestions);
+    const shouldAdd = window.confirm(
+      'Este mesmo horário está vazio em: ' + labels + '.\n\nQuer adicionar o mesmo programa também nesses dias?'
+    );
+
+    if (shouldAdd) {
+      const suggestedDays = suggestions.map((item) => item.day).filter(Boolean);
+      finalPayload.days = Array.from(new Set([payload.day, ...(payload.days || []), ...suggestedDays]));
+    }
+  }
+
+  return postJson('/api/admin/save-item', finalPayload);
+}
+
+async function deleteItemWithDaySuggestions(payload) {
+  const suggestions = await postJson('/api/admin/suggest-delete-days', payload);
+  const finalPayload = { ...payload };
+
+  if (Array.isArray(suggestions) && suggestions.length) {
+    const labels = formatSuggestionLabels(suggestions);
+    const shouldDelete = window.confirm(
+      'Este mesmo programa também existe em: ' + labels + '.\n\nQuer deletar também nesses dias?'
+    );
+
+    if (shouldDelete) {
+      const suggestedDays = suggestions.map((item) => item.day).filter(Boolean);
+      finalPayload.days = Array.from(new Set([payload.day, ...(payload.days || []), ...suggestedDays]));
+    }
+  }
+
+  return postJson('/api/admin/delete-item', finalPayload);
+}
+
+
+    function setStatus(text, isError) {
+      statusBox.textContent = text;
+      statusBox.style.color = isError ? '#b42323' : '#5a6b85';
+      statusBox.style.borderColor = isError ? '#efc8c8' : '#d8e0ec';
+      statusBox.style.background = isError ? '#fff4f4' : '#ffffff';
+    }
+
+    function escapeHtml(value) {
+      return String(value == null ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function createPreviewHtml(item, size) {
+      const safeSize = Number(size) || 128;
+      if (item && item.image) {
+        return '<img class="thumb" src="/' + encodeURI(item.image).replace(/%2F/g, '/') + '" alt="" style="width:' + safeSize + 'px;height:' + safeSize + 'px">';
+      }
+      return '<div class="thumb-placeholder" style="width:' + safeSize + 'px;height:' + safeSize + 'px">Horário<br>vazio</div>';
+    }
+
+    function renderList(schedule) {
+      const safeSchedule = schedule && Array.isArray(schedule.days) ? schedule : { days: [] };
+      const sections = (safeSchedule.days || []).map((day) => {
+        const itemsHtml = (day.items || []).map((item) => {
+          const title = item.empty ? 'Horário vazio' : escapeHtml(item.title || 'Sem nome');
+          const locutor = item.empty ? 'Clique para cadastrar um programa neste horário.' : (escapeHtml(item.locutor || item.host || 'Sem locutor'));
+          const badgeClass = item.empty ? 'badge empty' : 'badge';
+          const badgeText = item.empty ? 'Vazio' : 'Programa';
+
+          return '' +
+            '<button class="item ' + (item.empty ? 'empty' : '') + '" type="button" data-day="' + day.key + '" data-id="' + item.id + '">' +
+              createPreviewHtml(item, 128) +
+              '<div>' +
+                '<div class="item-title">' + title + '</div>' +
+                '<div class="item-line">' + escapeHtml(item.start) + ' às ' + escapeHtml(item.end) + '</div>' +
+                '<div class="item-line">' + locutor + '</div>' +
+                '<span class="' + badgeClass + '">' + badgeText + '</span>' +
+              '</div>' +
+            '</button>';
+        }).join('');
+
+        return '<section class="day-section">' +
+          '<div class="day-header">' + escapeHtml(day.label) + '</div>' +
+          '<div class="list">' + itemsHtml + '</div>' +
+        '</section>';
+      }).join('');
+
+      daysContainer.innerHTML = sections;
+    }
+
+    function findItem(dayKey, itemId) {
+      const day = (state.schedule && state.schedule.days || []).find((entry) => entry.key === dayKey);
+      if (!day) return null;
+      return (day.items || []).find((item) => item.id === itemId) || null;
+    }
+
+    function openChoice(item) {
+      state.selectedItem = item;
+      choiceTitle.textContent = item.empty ? 'Horário vazio' : (item.title || 'Programa');
+      choiceSummary.textContent = item.day.toUpperCase() + ' • ' + item.start + ' às ' + item.end;
+      deleteChoiceButton.style.display = item.empty ? 'none' : 'block';
+      choiceOverlay.classList.add('open');
+    }
+
+    function closeChoice() {
+      choiceOverlay.classList.remove('open');
+    }
+
+    const DEFAULT_VINYL_PATH = 'assets/base/vinyl.png';
+
+    function renderEditPreview(imagePath) {
+      imagePreviewWrap.innerHTML = imagePath
+        ? '<img class="thumb" src="/' + encodeURI(imagePath).replace(/%2F/g, '/') + '" alt="Preview" style="width:160px;height:160px">'
+        : '<div class="thumb-placeholder" style="width:160px;height:160px">Sem<br>imagem</div>';
+    }
+
+    function renderVinylPreview(vinylPath) {
+      const effectivePath = (vinylPath || '').trim() || DEFAULT_VINYL_PATH;
+      const usingDefault = !(vinylPath || '').trim();
+      vinylPreviewWrap.innerHTML = '' +
+        '<img class="thumb vinyl-thumb" src="/' + encodeURI(effectivePath).replace(/%2F/g, '/') + '" alt="Preview do vinyl">' +
+        '<div class="muted" style="text-align:center">' + (usingDefault ? 'Usando o vinyl padrão' : 'Vinyl personalizado deste programa') + '</div>';
+    }
+
+    function openEdit(item) {
+      state.pendingFilePath = '';
+      state.selectedItem = item;
+      editTitle.textContent = item.empty ? 'Cadastrar programa' : 'Editar programa';
+      editDayLabel.textContent = item.day.toUpperCase() + ' • faixa atual: ' + item.start + ' às ' + item.end;
+      programTitle.value = item.title || '';
+      programLocutor.value = item.locutor || item.host || '';
+      programStart.value = item.start || '00:00';
+      programEnd.value = item.end || '00:59';
+      programImage.value = item.image || '';
+      photoX.value = Number(item.photoX || 0);
+      photoY.value = Number(item.photoY || 0);
+      photoZoom.value = Number(item.photoZoom || 1);
+      programVinyl.value = item.vinyl || '';
+      programFile.value = '';
+      vinylFile.value = '';
+      renderEditPreview(item.image || '');
+      renderVinylPreview(item.vinyl || '');
+      editOverlay.classList.add('open');
+    }
+
+    function closeEdit() {
+      editOverlay.classList.remove('open');
+    }
+
+    async function loadState() {
+      reloadButton.disabled = true;
+      setStatus('Carregando programação...', false);
+      try {
+        const response = await fetch('/api/admin/state', { cache: 'no-store' });
+        const result = await response.json();
+        if (!response.ok || !result.ok) {
+          throw new Error(result && result.error ? result.error : 'Falha ao carregar a programação.');
+        }
+        state.schedule = result.data;
+        renderList(result.data);
+        setStatus('Programação carregada.', false);
+      } catch (error) {
+        setStatus(error.message || 'Falha ao carregar a programação.', true);
+      } finally {
+        reloadButton.disabled = false;
+      }
+    }
+
+
+async function uploadSelectedFile(file, currentImagePath) {
+  const query = new URLSearchParams();
+  query.set('filename', file.name || 'imagem');
+  if (currentImagePath) {
+    query.set('existingPath', currentImagePath);
+  }
+
+  const response = await fetch('/api/upload?' + query.toString(), {
+    method: 'POST',
+    headers: {
+      'Content-Type': file.type || 'application/octet-stream'
+    },
+    body: file
+  });
+  const result = await response.json();
+  if (!response.ok || !result.ok) {
+    throw new Error(result && result.error ? result.error : 'Falha ao enviar a imagem.');
+  }
+  return result.relativePath;
+}
+
+async function saveCurrentItem() {
+      const item = state.selectedItem;
+      if (!item) return;
+
+      saveButton.disabled = true;
+      setStatus('Salvando alterações...', false);
+
+      try {
+        let imagePath = programImage.value.trim();
+        if (programFile.files && programFile.files[0]) {
+          imagePath = await uploadSelectedFile(programFile.files[0], programImage.value.trim());
+          programImage.value = imagePath;
+        }
+
+        let vinylPath = programVinyl.value.trim();
+        if (vinylFile.files && vinylFile.files[0]) {
+          vinylPath = await uploadSelectedFile(vinylFile.files[0], programVinyl.value.trim());
+          programVinyl.value = vinylPath;
+        }
+
+        const payload = {
+          day: item.day,
+          originalStart: item.start,
+          originalEnd: item.end,
+          title: programTitle.value.trim(),
+          locutor: programLocutor.value.trim(),
+          start: programStart.value,
+          end: programEnd.value,
+          image: imagePath,
+          vinyl: vinylPath,
+          photoX: Number(photoX.value || 0),
+          photoY: Number(photoY.value || 0),
+          photoZoom: Number(photoZoom.value || 1)
+        };
+
+        const result = await saveItemWithDaySuggestions(payload);
+
+        state.schedule = result;
+        renderList(result);
+        closeEdit();
+        closeChoice();
+        setStatus('Programação salva com sucesso.', false);
+      } catch (error) {
+        setStatus(error.message || 'Falha ao salvar o programa.', true);
+      } finally {
+        saveButton.disabled = false;
+      }
+    }
+
+    async function deleteCurrentItem() {
+      const item = state.selectedItem;
+      if (!item || item.empty) return;
+      const confirmed = window.confirm('Deseja realmente deletar este programa? O horário vai continuar existindo como faixa vazia.');
+      if (!confirmed) return;
+
+      deleteChoiceButton.disabled = true;
+      setStatus('Deletando programa...', false);
+
+      try {
+        const result = await deleteItemWithDaySuggestions({ day: item.day, start: item.start, end: item.end });
+
+        state.schedule = result;
+        renderList(result);
+        closeChoice();
+        setStatus('Programa deletado. O horário foi mantido como faixa vazia.', false);
+      } catch (error) {
+        setStatus(error.message || 'Falha ao deletar o programa.', true);
+      } finally {
+        deleteChoiceButton.disabled = false;
+      }
+    }
+
+    daysContainer.addEventListener('click', (event) => {
+      const button = event.target.closest('.item');
+      if (!button) return;
+      const item = findItem(button.getAttribute('data-day'), button.getAttribute('data-id'));
+      if (!item) return;
+      openChoice(item);
+    });
+
+    document.querySelectorAll('[data-close-choice]').forEach((button) => {
+      button.addEventListener('click', closeChoice);
+    });
+
+    document.querySelectorAll('[data-close-edit]').forEach((button) => {
+      button.addEventListener('click', closeEdit);
+    });
+
+    choiceOverlay.addEventListener('click', (event) => {
+      if (event.target === choiceOverlay) closeChoice();
+    });
+
+    editOverlay.addEventListener('click', (event) => {
+      if (event.target === editOverlay) closeEdit();
+    });
+
+    editChoiceButton.addEventListener('click', () => {
+      if (!state.selectedItem) return;
+      closeChoice();
+      openEdit(state.selectedItem);
+    });
+
+    deleteChoiceButton.addEventListener('click', deleteCurrentItem);
+    programImage.addEventListener('input', () => {
+      renderEditPreview(programImage.value.trim());
+    });
+
+    programVinyl.addEventListener('input', () => {
+      renderVinylPreview(programVinyl.value.trim());
+    });
+
+    programFile.addEventListener('change', () => {
+      if (programFile.files && programFile.files[0]) {
+        const tempUrl = URL.createObjectURL(programFile.files[0]);
+        renderEditPreview(tempUrl);
+      } else {
+        renderEditPreview(programImage.value.trim());
+      }
+    });
+
+    vinylFile.addEventListener('change', () => {
+      if (vinylFile.files && vinylFile.files[0]) {
+        const tempUrl = URL.createObjectURL(vinylFile.files[0]);
+        renderVinylPreview(tempUrl);
+      } else {
+        renderVinylPreview(programVinyl.value.trim());
+      }
+    });
+
+    reloadButton.addEventListener('click', loadState);
+
+    programImage.addEventListener('input', () => {
+      renderEditPreview(programImage.value.trim());
+    });
+
+    programFile.addEventListener('change', () => {
+      const file = programFile.files && programFile.files[0];
+      if (!file) return;
+      const blobUrl = URL.createObjectURL(file);
+      renderEditPreview(blobUrl);
+    });
+
+    editForm.addEventListener('submit', (event) => {
+      event.preventDefault();
+      saveCurrentItem();
+    });
+
+    loadState();
+  </script>
+</body>
+</html>
