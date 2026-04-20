@@ -283,14 +283,32 @@
   }
 
   function setFreshImageSource(imageEl, src, token) {
-    if (!imageEl) return;
+    if (!imageEl) return false;
     var baseSrc = String(src || '').trim();
     if (!baseSrc) {
       imageEl.removeAttribute('src');
-      return;
+      imageEl.removeAttribute('data-base-src');
+      return true;
     }
+    var resolvedSrc = shouldUseDirectImageCache(baseSrc) ? baseSrc : buildNoCacheUrl(baseSrc, token || Date.now());
+    var currentBaseSrc = String(imageEl.getAttribute('data-base-src') || '').trim();
+    var currentSrc = String(imageEl.getAttribute('src') || '').trim();
+    if (currentBaseSrc === baseSrc && currentSrc === resolvedSrc) return false;
     imageEl.setAttribute('data-base-src', baseSrc);
-    imageEl.setAttribute('src', shouldUseDirectImageCache(baseSrc) ? baseSrc : buildNoCacheUrl(baseSrc, token || Date.now()));
+    imageEl.setAttribute('src', resolvedSrc);
+    return true;
+  }
+
+  function buildVinylProgramSignature(current, staticSrc, gifSrc) {
+    var item = current || {};
+    return [
+      item.id || '',
+      item.title || item.programa || '',
+      item.start || item.inicio || '',
+      item.end || item.fim || '',
+      staticSrc || '',
+      gifSrc || ''
+    ].join('|');
   }
   function normalizeRadioUrl(url) {
     return String(url || '').trim().replace(/\/+$/, '').toLowerCase();
@@ -1891,15 +1909,37 @@
       }
       var gifSrc = getVinylGifSource(staticSrc);
       if (shouldUseDirectImageCache(gifSrc)) primeVinylGifCache(gifSrc);
+
+      var previousStaticSrc = String(imageEl.getAttribute('data-static-src') || '').trim();
+      var previousGifSrc = String(imageEl.getAttribute('data-gif-src') || '').trim();
+      var previousSignature = String(imageEl.getAttribute('data-vinyl-signature') || '').trim();
+      var currentBaseSrc = String(imageEl.getAttribute('data-base-src') || '').trim();
+      var nextSignature = buildVinylProgramSignature(current, staticSrc, gifSrc);
+      var shouldUseGif = widget.classList.contains('is-live-active') || widget.classList.contains('is-autodj');
+      var desiredSrc = shouldUseGif ? gifSrc : staticSrc;
+      var sourceChanged = previousStaticSrc !== staticSrc || previousGifSrc !== gifSrc || previousSignature !== nextSignature;
+      var alreadyShowingDesired = currentBaseSrc === desiredSrc;
+      var alreadyShowingKnownVinyl = currentBaseSrc === staticSrc || currentBaseSrc === gifSrc;
+
       // Store both the static and GIF sources on the element for later
-      // switching in syncHost().  data-static-src holds the JPEG and
-      // data-gif-src holds the GIF.  data-base-src is set by
-      // setFreshImageSource() and updated whenever the image changes.
+      // switching in syncHost(). data-vinyl-signature lets us detect when
+      // the actual program/vinyl changed so the GIF is not restarted for
+      // the same program during periodic re-renders.
       imageEl.setAttribute('data-static-src', staticSrc);
       imageEl.setAttribute('data-gif-src', gifSrc);
-      // Initially load the static JPG.  setFreshImageSource() adds a
-      // cache-busting parameter based on the current timestamp.
-      setFreshImageSource(imageEl, staticSrc, now && now.isoLocal ? now.isoLocal : Date.now());
+      imageEl.setAttribute('data-vinyl-signature', nextSignature);
+
+      if (!sourceChanged && alreadyShowingKnownVinyl) {
+        imageEl.style.display = '';
+        return;
+      }
+
+      if (sourceChanged && alreadyShowingDesired) {
+        imageEl.style.display = '';
+        return;
+      }
+
+      setFreshImageSource(imageEl, desiredSrc, now && now.isoLocal ? now.isoLocal : Date.now());
       imageEl.style.display = '';
     }
 
