@@ -449,6 +449,14 @@
       analyserNode: null,
       frequencyData: null,
       timeData: null,
+      channelSplitter: null,
+      leftAnalyserNode: null,
+      rightAnalyserNode: null,
+      leftFrequencyData: null,
+      rightFrequencyData: null,
+      leftTimeData: null,
+      rightTimeData: null,
+      vuState: null,
       detectInterval: null,
       detectStartedAt: 0,
       silenceStartedAt: 0,
@@ -488,13 +496,29 @@
       if (!window.__reSharedAudioContext) window.__reSharedAudioContext = new AudioContextClass();
       engine.audioContext = window.__reSharedAudioContext;
       if (!engine.sourceNode) engine.sourceNode = engine.audioContext.createMediaElementSource(engine.audio);
+
       engine.analyserNode = engine.audioContext.createAnalyser();
       engine.analyserNode.fftSize = 256;
-      engine.analyserNode.smoothingTimeConstant = 0.78;
+      engine.analyserNode.smoothingTimeConstant = 0.76;
       engine.frequencyData = new Uint8Array(engine.analyserNode.frequencyBinCount);
       engine.timeData = new Uint8Array(engine.analyserNode.fftSize);
       engine.sourceNode.connect(engine.analyserNode);
       engine.analyserNode.connect(engine.audioContext.destination);
+
+      engine.channelSplitter = engine.audioContext.createChannelSplitter(2);
+      engine.leftAnalyserNode = engine.audioContext.createAnalyser();
+      engine.rightAnalyserNode = engine.audioContext.createAnalyser();
+      engine.leftAnalyserNode.fftSize = 256;
+      engine.rightAnalyserNode.fftSize = 256;
+      engine.leftAnalyserNode.smoothingTimeConstant = 0.38;
+      engine.rightAnalyserNode.smoothingTimeConstant = 0.38;
+      engine.leftFrequencyData = new Uint8Array(engine.leftAnalyserNode.frequencyBinCount);
+      engine.rightFrequencyData = new Uint8Array(engine.rightAnalyserNode.frequencyBinCount);
+      engine.leftTimeData = new Uint8Array(engine.leftAnalyserNode.fftSize);
+      engine.rightTimeData = new Uint8Array(engine.rightAnalyserNode.fftSize);
+      engine.sourceNode.connect(engine.channelSplitter);
+      engine.channelSplitter.connect(engine.leftAnalyserNode, 0);
+      engine.channelSplitter.connect(engine.rightAnalyserNode, 1);
       return true;
     } catch (_error) {
       engine.analyserUnavailable = true;
@@ -649,6 +673,140 @@
     return Promise.resolve(engine);
   }
 
+  function bindVUMeter(engine) {
+    var vuElement = document.querySelector('.re-type-vu-meter');
+    if (!vuElement) return;
+
+    var BAR_COUNT = 15;
+    var inactiveColor = '#20304b';
+
+    function buildChannelMarkup(label) {
+      var html = '<div class="re-vu-channel" data-channel="' + label + '">';
+      for (var i = 0; i < BAR_COUNT; i += 1) {
+        html += '<div class="re-vu-bar" data-bar-index="' + i + '"></div>';
+      }
+      html += '</div>';
+      return html;
+    }
+
+    if (!vuElement.getAttribute('data-stereo-ready')) {
+      vuElement.setAttribute('data-stereo-ready', 'true');
+      vuElement.innerHTML = '<div class="re-vu-stereo">' + buildChannelMarkup('left') + buildChannelMarkup('right') + '</div>';
+    }
+
+    var leftBars = Array.prototype.slice.call(vuElement.querySelectorAll('.re-vu-channel[data-channel="left"] .re-vu-bar'));
+    var rightBars = Array.prototype.slice.call(vuElement.querySelectorAll('.re-vu-channel[data-channel="right"] .re-vu-bar'));
+    vuElement.classList.add('re-vu-meter-stereo');
+
+    function ensureVUState() {
+      if (!engine.vuState) {
+        engine.vuState = {
+          left: 0,
+          right: 0,
+          leftRef: 0.17,
+          rightRef: 0.17
+        };
+      }
+      return engine.vuState;
+    }
+
+    function sampleChannelLevel(analyserNode, timeData, frequencyData) {
+      if (!analyserNode || !timeData || !frequencyData) return 0;
+      try {
+        analyserNode.getByteTimeDomainData(timeData);
+        analyserNode.getByteFrequencyData(frequencyData);
+      } catch (_error) {
+        return 0;
+      }
+
+      var rms = 0;
+      var peak = 0;
+      for (var i = 0; i < timeData.length; i += 1) {
+        var centered = Math.abs((timeData[i] - 128) / 128);
+        rms += centered * centered;
+        if (centered > peak) peak = centered;
+      }
+      rms = Math.sqrt(rms / Math.max(1, timeData.length));
+
+      var lowSum = 0;
+      var midSum = 0;
+      var lowCount = Math.min(18, frequencyData.length);
+      var midCount = Math.min(52, frequencyData.length);
+      for (var j = 0; j < lowCount; j += 1) lowSum += frequencyData[j];
+      for (var k = 0; k < midCount; k += 1) midSum += frequencyData[k];
+      var lowAvg = (lowSum / Math.max(1, lowCount)) / 255;
+      var midAvg = (midSum / Math.max(1, midCount)) / 255;
+
+      var raw = (rms * 0.58) + (peak * 0.18) + (lowAvg * 0.16) + (midAvg * 0.08);
+      raw = Math.max(0, raw - 0.012);
+      return Math.min(1, raw);
+    }
+
+    function normalizeChannelLevel(rawLevel, refKey, valueKey) {
+      var state = ensureVUState();
+      if (rawLevel >= state[refKey]) state[refKey] = rawLevel;
+      else state[refKey] = Math.max(0.17, state[refKey] * 0.9925);
+
+      var reference = Math.max(0.17, state[refKey] * 1.16);
+      var target = Math.min(1, rawLevel / reference);
+      target = Math.pow(Math.max(0, target), 0.92);
+      var blend = target > state[valueKey] ? 0.42 : 0.14;
+      state[valueKey] += (target - state[valueKey]) * blend;
+      return Math.max(0, Math.min(1, state[valueKey]));
+    }
+
+    function paintChannel(bars, level) {
+      var lit = Math.max(0, Math.min(BAR_COUNT, Math.round(level * BAR_COUNT)));
+      bars.forEach(function (bar, index) {
+        if (index < lit) {
+          if (index < BAR_COUNT - 5) bar.style.background = '#22c55e';
+          else if (index < BAR_COUNT - 2) bar.style.background = '#facc15';
+          else bar.style.background = '#ef4444';
+          bar.classList.add('is-active');
+        } else {
+          bar.style.background = inactiveColor;
+          bar.classList.remove('is-active');
+        }
+      });
+    }
+
+    function fadeToIdle() {
+      var state = ensureVUState();
+      state.left *= 0.84;
+      state.right *= 0.84;
+      paintChannel(leftBars, state.left);
+      paintChannel(rightBars, state.right);
+    }
+
+    function updateVU() {
+      if (!engine.wantPlay || engine.audio.paused || engine.audio.ended) {
+        fadeToIdle();
+        requestAnimationFrame(updateVU);
+        return;
+      }
+
+      if (ensureAudioAnalyser(engine)) {
+        var leftRaw = sampleChannelLevel(engine.leftAnalyserNode, engine.leftTimeData, engine.leftFrequencyData);
+        var rightRaw = sampleChannelLevel(engine.rightAnalyserNode, engine.rightTimeData, engine.rightFrequencyData);
+
+        if (rightRaw < 0.02 && leftRaw > 0.04) rightRaw = leftRaw * 0.97;
+        if (leftRaw < 0.02 && rightRaw > 0.04) leftRaw = rightRaw * 0.97;
+
+        var leftLevel = normalizeChannelLevel(leftRaw, 'leftRef', 'left');
+        var rightLevel = normalizeChannelLevel(rightRaw, 'rightRef', 'right');
+
+        paintChannel(leftBars, leftLevel);
+        paintChannel(rightBars, rightLevel);
+      } else {
+        fadeToIdle();
+      }
+
+      requestAnimationFrame(updateVU);
+    }
+
+    updateVU();
+  }
+
   function bindPlayers() {
     var engines = new Map();
 
@@ -706,6 +864,7 @@
       engines.set(id, engine);
       var url = resolvePreferredRadioUrl(player);
       attachSource(engine, url);
+      if (id === 'el_xvas15jl') bindVUMeter(engine);
       ['play', 'pause', 'ended', 'volumechange', 'playing', 'canplay', 'canplaythrough', 'loadstart', 'loadedmetadata', 'waiting', 'stalled'].forEach(function (eventName) {
         audio.addEventListener(eventName, function () {
           if (eventName === 'volumechange') {

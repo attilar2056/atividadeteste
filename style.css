@@ -84,6 +84,39 @@ html.re-dark-theme, body.re-dark-theme { --re-page-bg: var(--re-page-bg-dark); -
   width:40px; height:40px; border-radius:999px; border:none; background:rgba(255,255,255,0.14); color:#fff; cursor:pointer; flex:0 0 auto;
 }
 .re-type-vinyl { display:flex; align-items:center; justify-content:center; overflow:visible; }
+.re-type-vu-meter {
+  display:flex;
+  align-items:stretch;
+  justify-content:center;
+  overflow:hidden;
+  backdrop-filter:blur(1px);
+}
+.re-vu-stereo {
+  width:100%;
+  height:100%;
+  display:flex;
+  align-items:stretch;
+  gap:3px;
+}
+.re-vu-channel {
+  flex:1 1 0;
+  min-width:0;
+  display:flex;
+  flex-direction:column-reverse;
+  gap:2px;
+}
+.re-vu-bar {
+  flex:1 1 0;
+  border-radius:2px;
+  background:#20304b;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.08);
+  transition:background .08s linear, filter .08s linear, opacity .08s linear;
+  opacity:.68;
+}
+.re-vu-bar.is-active {
+  opacity:1;
+  filter:drop-shadow(0 0 4px rgba(255,255,255,.12));
+}
 .re-type-theme-toggle, .re-type-theme-toggle-alt, .re-type-theme-icon { display:flex; align-items:center; justify-content:center; }
 .re-theme-toggle-btn { width:100%; height:100%; border:none; background:transparent; color:inherit; cursor:pointer; display:block; padding:0; position:relative; }
 .re-theme-toggle-track { width:100%; height:100%; display:flex; align-items:center; justify-content:flex-start; padding:max(2px, min(6px, 10%)); border-radius:999px; background:rgba(148,163,184,.32); border:1px solid rgba(100,116,139,.35); transition:background .2s ease; }
@@ -398,6 +431,14 @@ html.re-dark-theme .re-theme-icon-moon, body.re-dark-theme .re-theme-icon-moon, 
   #page-stage .re-element[data-id="el_g7yn3dz4"] { left: 56px !important; top: 320px !important; width: 18px !important; height: 18px !important; }
   #page-stage .re-element[data-id="el_boop6oq8"] { left: 342px !important; top: 156px !important; width: 16px !important; height: 106px !important; }
   #page-stage .re-element[data-id="el_rh670qec"] { left: 346px !important; top: 224px !important; width: 18px !important; height: 18px !important; }
+  #page-stage .re-element[data-id="el_vumeter"] {
+    left: 18px !important;
+    top: 156px !important;
+    width: 34px !important;
+    height: 154px !important;
+    padding: 4px !important;
+    z-index: 11 !important;
+  }
 
   #page-stage .re-element[data-id="el_x0n04dkd"] { left: 10px !important; top: 364px !important; width: 370px !important; height: 126px !important; }
   #page-stage .re-element[data-id="el_sppb0lzv"] { left: 10px !important; top: 506px !important; width: 370px !important; height: 124px !important; }
