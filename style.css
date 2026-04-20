@@ -820,7 +820,7 @@ body::after{
   content:"";
   position:absolute;
   inset:0;
-  background:linear-gradient(180deg, rgba(255,94,86,.08) 0%, rgba(219,26,35,.42) 55%, rgba(166,12,21,.78) 100%);
+
   pointer-events:none;
 }
 #page-stage .re-current-program-photo{
