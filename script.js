@@ -654,9 +654,9 @@
     if (!vuElement || vuElement.__vuBound) return;
     vuElement.__vuBound = true;
 
-    var BAR_COUNT = 8;
-    var ACTIVE_INTERVAL = 140;
-    var IDLE_INTERVAL = 260;
+    var BAR_COUNT = 10;
+    var ACTIVE_INTERVAL = 125;
+    var IDLE_INTERVAL = 240;
     var HIDDEN_INTERVAL = 520;
 
     function buildChannelMarkup(name) {
@@ -678,6 +678,8 @@
       right: 0,
       lastLeft: -1,
       lastRight: -1,
+      noiseFloor: 0.035,
+      autoGain: 1.55,
       timerId: null
     };
 
@@ -687,7 +689,7 @@
       bars.forEach(function (bar, index) {
         var active = index < litCount;
         bar.classList.toggle('is-active', active);
-        bar.classList.toggle('is-warn', active && index >= BAR_COUNT - 2 && index < BAR_COUNT - 1);
+        bar.classList.toggle('is-warn', active && index >= BAR_COUNT - 3 && index < BAR_COUNT - 1);
         bar.classList.toggle('is-hot', active && index >= BAR_COUNT - 1);
       });
     }
@@ -700,26 +702,28 @@
     }
 
     function decayLevels() {
-      state.left *= 0.72;
-      state.right *= 0.72;
+      state.left *= 0.76;
+      state.right *= 0.76;
       if (state.left < 0.01) state.left = 0;
       if (state.right < 0.01) state.right = 0;
       paintLevels(state.left, state.right);
     }
 
     function sampleStereoLite() {
-      if (!(ensureAudioAnalyser(engine) && engine.analyserNode && engine.frequencyData)) {
+      if (!(ensureAudioAnalyser(engine) && engine.analyserNode && engine.frequencyData && engine.timeData)) {
         return { left: 0, right: 0 };
       }
 
       try {
         engine.analyserNode.getByteFrequencyData(engine.frequencyData);
+        engine.analyserNode.getByteTimeDomainData(engine.timeData);
       } catch (_error) {
         return { left: 0, right: 0 };
       }
 
-      var length = Math.min(engine.frequencyData.length, 42);
-      if (!length) return { left: 0, right: 0 };
+      var freqLength = Math.min(engine.frequencyData.length, 48);
+      var timeLength = Math.min(engine.timeData.length, 96);
+      if (!freqLength || !timeLength) return { left: 0, right: 0 };
 
       var low = 0;
       var mid = 0;
@@ -728,12 +732,12 @@
       var midCount = 0;
       var highCount = 0;
 
-      for (var i = 0; i < length; i += 1) {
+      for (var i = 0; i < freqLength; i += 1) {
         var value = engine.frequencyData[i] / 255;
         if (i < 12) {
           low += value;
           lowCount += 1;
-        } else if (i < 26) {
+        } else if (i < 28) {
           mid += value;
           midCount += 1;
         } else {
@@ -742,18 +746,55 @@
         }
       }
 
+      var rmsSum = 0;
+      var peak = 0;
+      var leftWave = 0;
+      var rightWave = 0;
+      var leftWaveCount = 0;
+      var rightWaveCount = 0;
+
+      for (var j = 0; j < timeLength; j += 1) {
+        var normalized = Math.abs((engine.timeData[j] - 128) / 128);
+        rmsSum += normalized * normalized;
+        if (normalized > peak) peak = normalized;
+        if ((j & 1) === 0) {
+          leftWave += normalized;
+          leftWaveCount += 1;
+        } else {
+          rightWave += normalized;
+          rightWaveCount += 1;
+        }
+      }
+
       var lowAvg = low / Math.max(1, lowCount);
       var midAvg = mid / Math.max(1, midCount);
       var highAvg = high / Math.max(1, highCount);
+      var rms = Math.sqrt(rmsSum / Math.max(1, timeLength));
+      var peakBlend = (peak * 0.68) + (rms * 0.32);
+      var energy = (lowAvg * 0.34) + (midAvg * 0.44) + (highAvg * 0.22);
+      var base = Math.max(energy, peakBlend * 1.18);
 
-      var leftRaw = Math.max(0, (lowAvg * 0.76) + (midAvg * 0.24) - 0.08);
-      var rightRaw = Math.max(0, (midAvg * 0.46) + (highAvg * 0.54) - 0.08);
+      state.noiseFloor += ((base < state.noiseFloor ? base : state.noiseFloor) - state.noiseFloor) * 0.05;
+      state.noiseFloor = Math.max(0.015, Math.min(0.16, state.noiseFloor));
 
-      var leftTarget = Math.min(1, Math.pow(leftRaw / 0.82, 1.08));
-      var rightTarget = Math.min(1, Math.pow(rightRaw / 0.82, 1.08));
+      var normalizedBase = Math.max(0, base - state.noiseFloor) / Math.max(0.12, 0.92 - state.noiseFloor);
+      var gainTarget = normalizedBase < 0.18 ? 2.2 : normalizedBase < 0.45 ? 1.82 : normalizedBase < 0.72 ? 1.48 : 1.18;
+      state.autoGain += (gainTarget - state.autoGain) * 0.12;
 
-      state.left += (leftTarget - state.left) * (leftTarget > state.left ? 0.34 : 0.16);
-      state.right += (rightTarget - state.right) * (rightTarget > state.right ? 0.34 : 0.16);
+      var shaped = Math.min(1, Math.pow(Math.max(0, normalizedBase * state.autoGain), 0.76));
+      var transientBoost = Math.min(0.18, peak * 0.22);
+      var waveLeftAvg = leftWave / Math.max(1, leftWaveCount);
+      var waveRightAvg = rightWave / Math.max(1, rightWaveCount);
+      var stereoSpread = Math.max(-0.12, Math.min(0.12, (highAvg - lowAvg) * 0.22));
+
+      var leftTarget = shaped + transientBoost + ((lowAvg - highAvg) * 0.10) + ((waveLeftAvg - waveRightAvg) * 0.55) - stereoSpread;
+      var rightTarget = shaped + transientBoost + ((highAvg - lowAvg) * 0.10) + ((waveRightAvg - waveLeftAvg) * 0.55) + stereoSpread;
+
+      leftTarget = Math.max(0, Math.min(1, leftTarget));
+      rightTarget = Math.max(0, Math.min(1, rightTarget));
+
+      state.left += (leftTarget - state.left) * (leftTarget > state.left ? 0.52 : 0.20);
+      state.right += (rightTarget - state.right) * (rightTarget > state.right ? 0.52 : 0.20);
 
       return {
         left: Math.max(0, Math.min(1, state.left)),
