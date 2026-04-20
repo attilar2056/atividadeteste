@@ -105,21 +105,32 @@
       if (!raw || raw === this.state.lastRawTitle) return null;
 
       this.state.lastRawTitle = raw;
-      // Quando um novo metadado chega, cancelamos qualquer atualização agendada
-      // anteriormente e mostramos um placeholder com o logotipo e o programa/locutor
-      // por 12 segundos. Somente após esse período atualizamos para a nova música.
+      
       if (this.state.pendingTimer) {
         clearTimeout(this.state.pendingTimer);
         this.state.pendingTimer = null;
       }
-      // Exibir placeholder com logotipo e nome do programa. Aguarda
-      // conclusão pois a leitura da programação pode envolver fetch.
+
+      // Se a página estiver oculta, não precisamos fazer nada pesado agora
+      if (document.hidden) {
+        return null;
+      }
+
       await this._showPlaceholder();
       const immediate = this.parseRawTitle(raw);
+      
       // Iniciar a resolução do Deezer em paralelo.
       const resolvePromise = this.resolveTrackMetadata(raw).catch(() => immediate);
+      
       return new Promise((resolve) => {
         this.state.pendingTimer = setTimeout(async () => {
+          // Verifica novamente se a página está visível antes de renderizar
+          if (document.hidden) {
+            this.state.pendingTimer = null;
+            resolve(null);
+            return;
+          }
+
           const resolved = await resolvePromise;
           this._render({
             song: resolved.song || immediate.song || raw,
