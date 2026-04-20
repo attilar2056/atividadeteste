@@ -678,8 +678,8 @@
       right: 0,
       lastLeft: -1,
       lastRight: -1,
-      noiseFloor: 0.035,
-      autoGain: 1.55,
+      noiseFloor: 0.045,
+      autoGain: 1.18,
       timerId: null
     };
 
@@ -770,31 +770,31 @@
       var midAvg = mid / Math.max(1, midCount);
       var highAvg = high / Math.max(1, highCount);
       var rms = Math.sqrt(rmsSum / Math.max(1, timeLength));
-      var peakBlend = (peak * 0.68) + (rms * 0.32);
+      var peakBlend = (peak * 0.64) + (rms * 0.36);
       var energy = (lowAvg * 0.34) + (midAvg * 0.44) + (highAvg * 0.22);
-      var base = Math.max(energy, peakBlend * 1.18);
+      var base = Math.max(energy * 0.92, peakBlend * 1.04);
 
       state.noiseFloor += ((base < state.noiseFloor ? base : state.noiseFloor) - state.noiseFloor) * 0.05;
-      state.noiseFloor = Math.max(0.015, Math.min(0.16, state.noiseFloor));
+      state.noiseFloor = Math.max(0.02, Math.min(0.18, state.noiseFloor));
 
-      var normalizedBase = Math.max(0, base - state.noiseFloor) / Math.max(0.12, 0.92 - state.noiseFloor);
-      var gainTarget = normalizedBase < 0.18 ? 2.2 : normalizedBase < 0.45 ? 1.82 : normalizedBase < 0.72 ? 1.48 : 1.18;
-      state.autoGain += (gainTarget - state.autoGain) * 0.12;
+      var normalizedBase = Math.max(0, base - state.noiseFloor) / Math.max(0.18, 1.10 - state.noiseFloor);
+      var gainTarget = normalizedBase < 0.16 ? 1.52 : normalizedBase < 0.36 ? 1.34 : normalizedBase < 0.62 ? 1.16 : 1.0;
+      state.autoGain += (gainTarget - state.autoGain) * 0.10;
 
-      var shaped = Math.min(1, Math.pow(Math.max(0, normalizedBase * state.autoGain), 0.76));
-      var transientBoost = Math.min(0.18, peak * 0.22);
+      var shaped = Math.min(1, Math.pow(Math.max(0, normalizedBase * state.autoGain * 0.92), 0.90));
+      var transientBoost = Math.min(0.10, peak * 0.12);
       var waveLeftAvg = leftWave / Math.max(1, leftWaveCount);
       var waveRightAvg = rightWave / Math.max(1, rightWaveCount);
-      var stereoSpread = Math.max(-0.12, Math.min(0.12, (highAvg - lowAvg) * 0.22));
+      var stereoSpread = Math.max(-0.08, Math.min(0.08, (highAvg - lowAvg) * 0.16));
 
-      var leftTarget = shaped + transientBoost + ((lowAvg - highAvg) * 0.10) + ((waveLeftAvg - waveRightAvg) * 0.55) - stereoSpread;
-      var rightTarget = shaped + transientBoost + ((highAvg - lowAvg) * 0.10) + ((waveRightAvg - waveLeftAvg) * 0.55) + stereoSpread;
+      var leftTarget = shaped + transientBoost + ((lowAvg - highAvg) * 0.07) + ((waveLeftAvg - waveRightAvg) * 0.28) - stereoSpread;
+      var rightTarget = shaped + transientBoost + ((highAvg - lowAvg) * 0.07) + ((waveRightAvg - waveLeftAvg) * 0.28) + stereoSpread;
 
       leftTarget = Math.max(0, Math.min(1, leftTarget));
       rightTarget = Math.max(0, Math.min(1, rightTarget));
 
-      state.left += (leftTarget - state.left) * (leftTarget > state.left ? 0.52 : 0.20);
-      state.right += (rightTarget - state.right) * (rightTarget > state.right ? 0.52 : 0.20);
+      state.left += (leftTarget - state.left) * (leftTarget > state.left ? 0.42 : 0.18);
+      state.right += (rightTarget - state.right) * (rightTarget > state.right ? 0.42 : 0.18);
 
       return {
         left: Math.max(0, Math.min(1, state.left)),
