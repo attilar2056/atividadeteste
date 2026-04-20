@@ -56,16 +56,26 @@
          * para as informações da nova música. Este campo guarda o ID do
          * temporizador ativo para permitir cancelamento.
          */
-        pendingTimer: null
+        pendingTimer: null,
+        pendingRawTitle: '',
+        pendingImmediate: null,
+        pendingResolvePromise: null,
+        visibilityBound: false
       };
 
       this._boundOnMessage = this._onSseMessage.bind(this);
       this._boundOnError = this._onSseError.bind(this);
+      this._boundOnVisibilityChange = this._onVisibilityChange.bind(this);
     }
 
     start() {
       this._ensureMounted();
       this.reset();
+
+      if (!this.state.visibilityBound) {
+        document.addEventListener('visibilitychange', this._boundOnVisibilityChange);
+        this.state.visibilityBound = true;
+      }
 
       if (this.options.metadata.type === 'sse') {
         if (!this.options.metadata.url) {
@@ -82,6 +92,10 @@
         this.state.eventSource.close();
         this.state.eventSource = null;
       }
+      if (this.state.visibilityBound) {
+        document.removeEventListener('visibilitychange', this._boundOnVisibilityChange);
+        this.state.visibilityBound = false;
+      }
       return this;
     }
 
@@ -91,6 +105,9 @@
         clearTimeout(this.state.pendingTimer);
         this.state.pendingTimer = null;
       }
+      this.state.pendingRawTitle = '';
+      this.state.pendingImmediate = null;
+      this.state.pendingResolvePromise = null;
       this._render({
         song: this.options.stationName || this.options.textFallback || 'Ao vivo',
         artist: '',
@@ -105,7 +122,8 @@
       if (!raw || raw === this.state.lastRawTitle) return null;
 
       this.state.lastRawTitle = raw;
-      
+      this.state.pendingRawTitle = raw;
+
       if (this.state.pendingTimer) {
         clearTimeout(this.state.pendingTimer);
         this.state.pendingTimer = null;
@@ -113,23 +131,74 @@
 
       await this._showPlaceholder();
       const immediate = this.parseRawTitle(raw);
-      
-      // Iniciar a resolução do Deezer em paralelo.
       const resolvePromise = this.resolveTrackMetadata(raw).catch(() => immediate);
-      
+
+      this.state.pendingImmediate = immediate;
+      this.state.pendingResolvePromise = resolvePromise;
+
       return new Promise((resolve) => {
         this.state.pendingTimer = setTimeout(async () => {
+          if (this.state.pendingRawTitle !== raw) {
+            this.state.pendingTimer = null;
+            resolve(null);
+            return;
+          }
+
           const resolved = await resolvePromise;
+          if (this.state.pendingRawTitle !== raw) {
+            this.state.pendingTimer = null;
+            resolve(null);
+            return;
+          }
+
           this._render({
             song: resolved.song || immediate.song || raw,
             artist: resolved.artist || immediate.artist || '',
             cover: resolved.cover || this.options.defaultCover || '',
             rawTitle: raw
           });
+
           this.state.pendingTimer = null;
+          this.state.pendingRawTitle = '';
+          this.state.pendingImmediate = null;
+          this.state.pendingResolvePromise = null;
           resolve(resolved);
         }, 12000);
       });
+    }
+
+    async _flushPendingTitleNow() {
+      const raw = String(this.state.pendingRawTitle || '').trim();
+      if (!raw) return null;
+
+      if (this.state.pendingTimer) {
+        clearTimeout(this.state.pendingTimer);
+        this.state.pendingTimer = null;
+      }
+
+      const immediate = this.state.pendingImmediate || this.parseRawTitle(raw);
+      const resolvePromise = this.state.pendingResolvePromise || this.resolveTrackMetadata(raw).catch(() => immediate);
+      const resolved = await resolvePromise;
+
+      if (String(this.state.pendingRawTitle || '').trim() !== raw) return null;
+
+      this._render({
+        song: resolved.song || immediate.song || raw,
+        artist: resolved.artist || immediate.artist || '',
+        cover: resolved.cover || this.options.defaultCover || '',
+        rawTitle: raw
+      });
+
+      this.state.pendingRawTitle = '';
+      this.state.pendingImmediate = null;
+      this.state.pendingResolvePromise = null;
+      return resolved;
+    }
+
+    _onVisibilityChange() {
+      if (!document.hidden && this.state.pendingRawTitle) {
+        this._flushPendingTitleNow().catch(() => {});
+      }
     }
 
     parseRawTitle(rawTitle) {

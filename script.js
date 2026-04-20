@@ -449,14 +449,6 @@
       analyserNode: null,
       frequencyData: null,
       timeData: null,
-      channelSplitter: null,
-      leftAnalyserNode: null,
-      rightAnalyserNode: null,
-      leftFrequencyData: null,
-      rightFrequencyData: null,
-      leftTimeData: null,
-      rightTimeData: null,
-      vuState: null,
       detectInterval: null,
       detectStartedAt: 0,
       silenceStartedAt: 0,
@@ -496,10 +488,9 @@
       if (!window.__reSharedAudioContext) window.__reSharedAudioContext = new AudioContextClass();
       engine.audioContext = window.__reSharedAudioContext;
       if (!engine.sourceNode) engine.sourceNode = engine.audioContext.createMediaElementSource(engine.audio);
-
       engine.analyserNode = engine.audioContext.createAnalyser();
-      engine.analyserNode.fftSize = 128;
-      engine.analyserNode.smoothingTimeConstant = 0.72;
+      engine.analyserNode.fftSize = 256;
+      engine.analyserNode.smoothingTimeConstant = 0.78;
       engine.frequencyData = new Uint8Array(engine.analyserNode.frequencyBinCount);
       engine.timeData = new Uint8Array(engine.analyserNode.fftSize);
       engine.sourceNode.connect(engine.analyserNode);
@@ -660,169 +651,137 @@
 
   function bindVUMeter(engine) {
     var vuElement = document.querySelector('.re-type-vu-meter');
-    if (!vuElement) return;
-    if (vuElement.__vuBound) return;
+    if (!vuElement || vuElement.__vuBound) return;
     vuElement.__vuBound = true;
 
-    var BAR_COUNT = 10;
-    var FRAME_MS = 95;
-    var BG_FRAME_MS = 420;
+    var BAR_COUNT = 8;
+    var ACTIVE_INTERVAL = 140;
+    var IDLE_INTERVAL = 260;
+    var HIDDEN_INTERVAL = 520;
 
-    function buildChannelMarkup(label) {
-      var html = '<div class="re-vu-channel" data-channel="' + label + '">';
+    function buildChannelMarkup(name) {
+      var html = '<div class="re-vu-channel" data-channel="' + name + '">';
       for (var i = 0; i < BAR_COUNT; i += 1) {
-        html += '<div class="re-vu-bar" data-bar-index="' + i + '"></div>';
+        html += '<div class="re-vu-bar" data-index="' + i + '"></div>';
       }
       html += '</div>';
       return html;
     }
 
-    vuElement.setAttribute('data-stereo-ready', 'true');
     vuElement.innerHTML = '<div class="re-vu-stereo">' + buildChannelMarkup('left') + buildChannelMarkup('right') + '</div>';
     vuElement.classList.add('re-vu-meter-stereo');
 
     var leftBars = Array.prototype.slice.call(vuElement.querySelectorAll('.re-vu-channel[data-channel="left"] .re-vu-bar'));
     var rightBars = Array.prototype.slice.call(vuElement.querySelectorAll('.re-vu-channel[data-channel="right"] .re-vu-bar'));
+    var state = {
+      left: 0,
+      right: 0,
+      lastLeft: -1,
+      lastRight: -1,
+      timerId: null
+    };
 
-    function ensureVUState() {
-      if (!engine.vuState) {
-        engine.vuState = {
-          left: 0,
-          right: 0,
-          leftRef: 0.12,
-          rightRef: 0.12,
-          lastLeftLit: -1,
-          lastRightLit: -1,
-          lastPaintAt: 0,
-          timerId: null
-        };
-      }
-      return engine.vuState;
+    function paintBars(bars, litCount, cacheKey) {
+      if (state[cacheKey] === litCount) return;
+      state[cacheKey] = litCount;
+      bars.forEach(function (bar, index) {
+        var active = index < litCount;
+        bar.classList.toggle('is-active', active);
+        bar.classList.toggle('is-warn', active && index >= BAR_COUNT - 2 && index < BAR_COUNT - 1);
+        bar.classList.toggle('is-hot', active && index >= BAR_COUNT - 1);
+      });
+    }
+
+    function paintLevels(leftLevel, rightLevel) {
+      var leftCount = Math.max(0, Math.min(BAR_COUNT, Math.round(leftLevel * BAR_COUNT)));
+      var rightCount = Math.max(0, Math.min(BAR_COUNT, Math.round(rightLevel * BAR_COUNT)));
+      paintBars(leftBars, leftCount, 'lastLeft');
+      paintBars(rightBars, rightCount, 'lastRight');
+    }
+
+    function decayLevels() {
+      state.left *= 0.72;
+      state.right *= 0.72;
+      if (state.left < 0.01) state.left = 0;
+      if (state.right < 0.01) state.right = 0;
+      paintLevels(state.left, state.right);
     }
 
     function sampleStereoLite() {
-      if (!engine || !engine.analyserNode || !engine.frequencyData || !engine.timeData) {
+      if (!(ensureAudioAnalyser(engine) && engine.analyserNode && engine.frequencyData)) {
         return { left: 0, right: 0 };
       }
 
       try {
         engine.analyserNode.getByteFrequencyData(engine.frequencyData);
-        engine.analyserNode.getByteTimeDomainData(engine.timeData);
       } catch (_error) {
         return { left: 0, right: 0 };
       }
 
-      var rms = 0;
-      var peak = 0;
-      for (var i = 0; i < engine.timeData.length; i += 2) {
-        var centered = Math.abs((engine.timeData[i] - 128) / 128);
-        rms += centered * centered;
-        if (centered > peak) peak = centered;
-      }
-      rms = Math.sqrt(rms / Math.max(1, Math.ceil(engine.timeData.length / 2)));
+      var length = Math.min(engine.frequencyData.length, 42);
+      if (!length) return { left: 0, right: 0 };
 
-      var lowSum = 0;
-      var midLowSum = 0;
-      var midHighSum = 0;
-      var highSum = 0;
+      var low = 0;
+      var mid = 0;
+      var high = 0;
       var lowCount = 0;
-      var midLowCount = 0;
-      var midHighCount = 0;
+      var midCount = 0;
       var highCount = 0;
 
-      for (var j = 0; j < engine.frequencyData.length; j += 1) {
-        var value = engine.frequencyData[j];
-        if (j < 8) {
-          lowSum += value;
+      for (var i = 0; i < length; i += 1) {
+        var value = engine.frequencyData[i] / 255;
+        if (i < 12) {
+          low += value;
           lowCount += 1;
-        } else if (j < 18) {
-          midLowSum += value;
-          midLowCount += 1;
-        } else if (j < 34) {
-          midHighSum += value;
-          midHighCount += 1;
-        } else if (j < 56) {
-          highSum += value;
+        } else if (i < 26) {
+          mid += value;
+          midCount += 1;
+        } else {
+          high += value;
           highCount += 1;
         }
       }
 
-      var lowAvg = (lowSum / Math.max(1, lowCount)) / 255;
-      var midLowAvg = (midLowSum / Math.max(1, midLowCount)) / 255;
-      var midHighAvg = (midHighSum / Math.max(1, midHighCount)) / 255;
-      var highAvg = (highSum / Math.max(1, highCount)) / 255;
-      var base = Math.max(0, (rms * 0.44) + (peak * 0.18) + (midLowAvg * 0.2) + (midHighAvg * 0.1) - 0.02);
+      var lowAvg = low / Math.max(1, lowCount);
+      var midAvg = mid / Math.max(1, midCount);
+      var highAvg = high / Math.max(1, highCount);
+
+      var leftRaw = Math.max(0, (lowAvg * 0.76) + (midAvg * 0.24) - 0.08);
+      var rightRaw = Math.max(0, (midAvg * 0.46) + (highAvg * 0.54) - 0.08);
+
+      var leftTarget = Math.min(1, Math.pow(leftRaw / 0.82, 1.08));
+      var rightTarget = Math.min(1, Math.pow(rightRaw / 0.82, 1.08));
+
+      state.left += (leftTarget - state.left) * (leftTarget > state.left ? 0.34 : 0.16);
+      state.right += (rightTarget - state.right) * (rightTarget > state.right ? 0.34 : 0.16);
 
       return {
-        left: Math.min(1, Math.max(0, (base * 0.72) + (lowAvg * 0.18) + (midLowAvg * 0.12))),
-        right: Math.min(1, Math.max(0, (base * 0.72) + (highAvg * 0.18) + (midHighAvg * 0.12)))
+        left: Math.max(0, Math.min(1, state.left)),
+        right: Math.max(0, Math.min(1, state.right))
       };
     }
 
-    function normalizeChannelLevel(rawLevel, refKey, valueKey) {
-      var state = ensureVUState();
-      if (rawLevel >= state[refKey]) state[refKey] = rawLevel;
-      else state[refKey] = Math.max(0.12, state[refKey] * 0.989);
-
-      var reference = Math.max(0.12, state[refKey] * 1.28);
-      var target = Math.min(1, rawLevel / reference);
-      target = Math.pow(Math.max(0, target), 1.15);
-      var blend = target > state[valueKey] ? 0.34 : 0.16;
-      state[valueKey] += (target - state[valueKey]) * blend;
-      return Math.max(0, Math.min(1, state[valueKey]));
-    }
-
-    function paintChannel(bars, lit, lastKey) {
-      var state = ensureVUState();
-      if (state[lastKey] === lit) return;
-      state[lastKey] = lit;
-      bars.forEach(function (bar, index) {
-        var active = index < lit;
-        bar.classList.toggle('is-active', active);
-        bar.classList.toggle('is-warn', active && index >= BAR_COUNT - 3 && index < BAR_COUNT - 1);
-        bar.classList.toggle('is-hot', active && index >= BAR_COUNT - 1);
-      });
-    }
-
-    function paintFromLevels(leftLevel, rightLevel) {
-      paintChannel(leftBars, Math.max(0, Math.min(BAR_COUNT, Math.round(leftLevel * BAR_COUNT))), 'lastLeftLit');
-      paintChannel(rightBars, Math.max(0, Math.min(BAR_COUNT, Math.round(rightLevel * BAR_COUNT))), 'lastRightLit');
-    }
-
-    function fadeToIdle() {
-      var state = ensureVUState();
-      state.left *= 0.8;
-      state.right *= 0.8;
-      if (state.left < 0.01) state.left = 0;
-      if (state.right < 0.01) state.right = 0;
-      paintFromLevels(state.left, state.right);
-    }
-
-    function scheduleNext() {
-      var state = ensureVUState();
+    function scheduleNext(delay) {
       clearTimeout(state.timerId);
-      state.timerId = setTimeout(updateVU, document.hidden ? BG_FRAME_MS : FRAME_MS);
+      state.timerId = setTimeout(updateVU, delay);
     }
 
     function updateVU() {
-      var state = ensureVUState();
-      if (!engine.wantPlay || engine.audio.paused || engine.audio.ended || document.hidden) {
-        fadeToIdle();
-        scheduleNext();
+      if (!engine.wantPlay || engine.audio.paused || engine.audio.ended) {
+        decayLevels();
+        scheduleNext(IDLE_INTERVAL);
         return;
       }
 
-      if (ensureAudioAnalyser(engine)) {
-        var stereo = sampleStereoLite();
-        var leftLevel = normalizeChannelLevel(stereo.left, 'leftRef', 'left');
-        var rightLevel = normalizeChannelLevel(stereo.right, 'rightRef', 'right');
-        paintFromLevels(leftLevel, rightLevel);
-      } else {
-        fadeToIdle();
+      if (document.hidden) {
+        decayLevels();
+        scheduleNext(HIDDEN_INTERVAL);
+        return;
       }
 
-      state.lastPaintAt = Date.now();
-      scheduleNext();
+      var levels = sampleStereoLite();
+      paintLevels(levels.left, levels.right);
+      scheduleNext(ACTIVE_INTERVAL);
     }
 
     updateVU();
@@ -1975,23 +1934,34 @@
     var lastSourceRefreshAt = 0;
 
     var isPageVisible = true;
+    var lastHiddenRefreshAt = 0;
     document.addEventListener('visibilitychange', function() {
       isPageVisible = !document.hidden;
-      if (isPageVisible) {
-        tick();
-      }
+      tick(true);
     });
 
-    function tick() {
-      if (!isPageVisible) return;
+    function tick(force) {
+      var nowTs = Date.now();
+      if (!isPageVisible && !force) {
+        if (!lastHiddenRefreshAt || (nowTs - lastHiddenRefreshAt) >= 30000) {
+          lastHiddenRefreshAt = nowTs;
+          renderFromCache();
+          if (!lastSourceRefreshAt || (nowTs - lastSourceRefreshAt) >= 240000) {
+            lastSourceRefreshAt = nowTs;
+            refreshFromSource();
+          }
+        }
+        return;
+      }
+
       var clock = currentRuntimeClockContext();
-      var renderKey = clock && clock.isoLocal ? clock.isoLocal : String(Date.now());
-      if (renderKey !== lastRenderKey) {
+      var renderKey = clock && clock.isoLocal ? clock.isoLocal : String(nowTs);
+      if (force || renderKey !== lastRenderKey) {
         lastRenderKey = renderKey;
         renderFromCache();
       }
-      if (!lastSourceRefreshAt || (Date.now() - lastSourceRefreshAt) >= 240000) {
-        lastSourceRefreshAt = Date.now();
+      if (!lastSourceRefreshAt || (nowTs - lastSourceRefreshAt) >= 240000) {
+        lastSourceRefreshAt = nowTs;
         refreshFromSource();
       }
     }
