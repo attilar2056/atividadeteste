@@ -90,7 +90,7 @@
       triggerRaw: 'PODCAST DA RETRO #16',
       intervalMs: 10000,
       captureMs: 7000,
-      acoustidClient: '',
+      acoustidClient: 'j5v4UhNMWW',
       running: false,
       loopTimer: null,
       inFlight: false,
