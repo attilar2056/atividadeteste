@@ -148,19 +148,12 @@ html.re-dark-theme, body.re-dark-theme { --re-page-bg: var(--re-page-bg-dark); -
 html.re-dark-theme .re-theme-icon-sun, body.re-dark-theme .re-theme-icon-sun, .re-theme-icon-box.is-dark .re-theme-icon-sun { display:none; }
 html.re-dark-theme .re-theme-icon-moon, body.re-dark-theme .re-theme-icon-moon, .re-theme-icon-box.is-dark .re-theme-icon-moon { display:block; }
 
-.re-vinyl-wrap { width:100%; height:100%; display:flex; align-items:center; justify-content:center; }
-.re-vinyl-image { border-radius:999px; }
-.re-type-vinyl.is-live-active .re-vinyl-image {
-  /* The vinyl image spins when a program is live.  The script
-     listens for the `visibilitychange` event and pauses or resumes
-     the animation by toggling `animationPlayState` on these elements.  This
-     ensures that the disc spins normally when visible but doesn't cause
-     unnecessary CPU usage when the page is hidden. */
-  /* No CSS-based spin for the vinyl.  The animated GIF handles
-     rotation. */
-  animation: none;
+.re-vinyl-wrap { width:100%; height:100%; display:flex; align-items:center; justify-content:center; position:relative; border-radius:999px; box-shadow:0 20px 22px rgba(0,0,0,.34); contain:paint; }
+.re-vinyl-image { border-radius:999px; position:relative; z-index:1; transform:translateZ(0); backface-visibility:hidden; will-change:transform; }
+.re-type-vinyl.is-vinyl-spin-active .re-vinyl-image {
+  animation: re-spin 3.6s linear infinite;
 }
-@keyframes re-spin { from { transform:rotate(0deg); } to { transform:rotate(360deg); } }
+@keyframes re-spin { from { transform:translateZ(0) rotate(0deg); } to { transform:translateZ(0) rotate(360deg); } }
 .re-container { overflow:visible; }
 .re-container-label {
   position:absolute; top:-24px; left:0; font-size:12px; padding:4px 8px; background:rgba(23,90,230,0.15);
@@ -182,9 +175,9 @@ html.re-dark-theme .re-theme-icon-moon, body.re-dark-theme .re-theme-icon-moon, 
 .re-type-image-loop, .re-type-schedule-photo-current { overflow:hidden; }
 .re-image-loop-box, .re-current-program-photo-box { width:100%; height:100%; overflow:hidden; border-radius:inherit; }
 .re-weather-widget { position:relative; width:100%; height:100%; overflow:hidden; }
-.re-weather-city, .re-weather-temp { position:absolute; left:32px; color:inherit; line-height:1; white-space:nowrap; }
+.re-weather-city, .re-weather-temp { position:absolute; left:14px; color:inherit; line-height:1; white-space:nowrap; }
 .re-weather-city { top:34px; font-weight:700; font-size:20px; }
-.re-weather-temp { top:106px; font-weight:700; font-size:58px; }
+.re-weather-temp { top:70px; font-weight:700; font-size:58px; }
 .re-type-schedule .re-schedule-box { position:relative; width:100%; height:100%; overflow:hidden; }
 .re-schedule-photo-frame { position:absolute; overflow:hidden; border-radius:inherit; background:rgba(255,255,255,0.08); }
 .re-schedule-image { width:100%; height:100%; object-fit:cover; transform-origin:center center; }
@@ -436,7 +429,7 @@ html.re-dark-theme .re-theme-icon-moon, body.re-dark-theme .re-theme-icon-moon, 
   }
 
   #page-stage .re-weather-temp {
-    font-size: 58px !important;
+    font-size: 50px !important;
   }
 }
 
@@ -680,7 +673,14 @@ body::after{
   box-shadow:0 0 10px rgba(86,148,255,.35);
 }
 #page-stage .re-vinyl-image{
-  filter:drop-shadow(0 20px 22px rgba(0,0,0,.40));
+  filter:none !important;
+}
+#page-stage .re-type-vinyl,
+#page-stage .re-type-radio-metadata,
+#page-stage .re-type-image-loop,
+#page-stage .re-type-news,
+#page-stage .re-map-poll-slot{
+  contain:paint;
 }
 
 #page-stage .re-element[data-id="el_x0n04dkd"],
@@ -1066,4 +1066,95 @@ body::after{
     margin-top:6px;
     font-size:14px;
   }
+}
+
+
+/* ============================================================
+   OTIMIZAÇÕES DE PERFORMANCE — reduz engasgos no stream
+   ============================================================ */
+
+/* Promover o stage para camada GPU dedicada evita que o
+   navegador re-composite a página inteira a cada animação. */
+#page-stage {
+  will-change: transform;
+  contain: layout style;
+}
+
+/* Elementos que mudam frequentemente (metadata, clima, notícias)
+   ficam em suas próprias camadas para não forçar repaint geral. */
+.re-type-radio-metadata,
+.re-type-weather-rio,
+.re-type-news,
+.re-type-schedule-photo-current {
+  will-change: contents;
+  contain: layout style;
+}
+
+/* O canvas do VU meter tem sua própria camada GPU.
+   Isso isola os redesenhos do canvas do restante da página. */
+#page-stage [data-id="el_239xlkuf"] canvas {
+  will-change: transform;
+  isolation: isolate;
+}
+
+/* Desativar pointer-events em elementos puramente decorativos
+   evita que o hover dispare recalculos de layout desnecessários
+   quando o usuário move o mouse sobre a página. */
+.re-type-shape:not([onclick]):not([data-type="shape"] a) {
+  pointer-events: none;
+}
+
+/* Suavizar transições de opacidade sem usar propriedades
+   que forçam repaint completo (evitar box-shadow animado). */
+.re-element.is-loading .re-live-badge {
+  will-change: opacity;
+}
+
+
+/* Ajustes finos do disco e do VU */
+#page-stage .re-element[data-id="el_0ljn6bwv"]{
+  display:none !important;
+}
+#page-stage .re-element[data-id="el_fp3e6edh"]{
+  overflow:visible !important;
+}
+#page-stage .re-element[data-id="el_fp3e6edh"] .re-vinyl-wrap{
+  position:relative;
+  isolation:isolate;
+  border-radius:50%;
+  box-shadow:none !important;
+}
+#page-stage .re-element[data-id="el_fp3e6edh"] .re-vinyl-wrap::before{
+  content:"";
+  position:absolute;
+  inset:16px;
+  border-radius:50%;
+  background:radial-gradient(circle at 50% 42%, rgba(0,0,0,.18) 0%, rgba(0,0,0,.42) 54%, rgba(0,0,0,.78) 100%);
+  filter:blur(16px);
+  transform:translateY(16px) scale(.95);
+  opacity:.96;
+  z-index:0;
+  pointer-events:none;
+}
+#page-stage .re-element[data-id="el_fp3e6edh"] .re-vinyl-image{
+  position:relative;
+  z-index:1;
+}
+#page-stage .re-element[data-id="el_239xlkuf"]{
+  background:linear-gradient(180deg, rgba(29,68,167,.18), rgba(16,33,82,.25)) !important;
+}
+#page-stage [data-id="el_239xlkuf"] canvas{
+  position:relative;
+  z-index:1;
+}
+.re-footer-copyright,
+.re-footer-copyright .re-text-inner {
+  color: #000000 !important;
+}
+
+html.re-dark-theme .re-footer-copyright,
+html.re-dark-theme .re-footer-copyright .re-text-inner,
+body.re-dark-theme .re-footer-copyright,
+body.re-dark-theme .re-footer-copyright .re-text-inner {
+  color: #ffffff !important;
 }

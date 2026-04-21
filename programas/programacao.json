@@ -1,6 +1,6 @@
 {
   "timezone": "America/Sao_Paulo",
-  "timeApiUrl": "https://api.open-meteo.com/v1/forecast?latitude=-23.5505&longitude=-46.6333&current=is_day&timezone=America/Sao_Paulo&forecast_days=1",
+  "timeApiUrl": "https://time.now/developer/api/timezone/America/Sao_Paulo",
   "programas": [
     {
       "id": "programa_seg_0_179",
