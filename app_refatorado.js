@@ -90,7 +90,7 @@
       triggerRaw: 'PODCAST DA RETRO #16',
       intervalMs: 10000,
       captureMs: 7000,
-      acoustidClient: 'j5v4UhNMWW',
+      acoustidClient: '',
       running: false,
       loopTimer: null,
       inFlight: false,
@@ -741,7 +741,7 @@
   function getAudioRecognitionConfig() {
     var rec = app.audioRecognition || {};
     var host = app.metadataHost;
-    rec.mode = safeText(host && host.getAttribute('data-audio-recognition-mode') || rec.mode || 'js-wasm').trim().toLowerCase() || 'js-wasm';
+    rec.mode = safeText(host && host.getAttribute('data-audio-recognition-mode') || rec.mode || 'js').trim().toLowerCase() || 'js';
     rec.triggerRaw = safeText(host && host.getAttribute('data-audio-recognition-trigger') || rec.triggerRaw || 'PODCAST DA RETRO #16').trim() || 'PODCAST DA RETRO #16';
     rec.intervalMs = Math.max(5000, Number(host && host.getAttribute('data-audio-recognition-interval') || rec.intervalMs || 10000) || 10000);
     rec.captureMs = Math.max(5000, Math.min(12000, Number(host && host.getAttribute('data-audio-recognition-capture-ms') || rec.captureMs || 7000) || 7000));
