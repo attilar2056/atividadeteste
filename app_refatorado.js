@@ -746,8 +746,8 @@
     rec.intervalMs = Math.max(5000, Number(host && host.getAttribute('data-audio-recognition-interval') || rec.intervalMs || 10000) || 10000);
     rec.captureMs = Math.max(5000, Math.min(12000, Number(host && host.getAttribute('data-audio-recognition-capture-ms') || rec.captureMs || 7000) || 7000));
     rec.acoustidClient = safeText(host && (host.getAttribute('data-audio-recognition-acoustid-client') || host.getAttribute('data-audio-recognition-client')) || rec.acoustidClient || '').trim();
-    rec.wasmUrl = safeText(host && host.getAttribute('data-audio-recognition-wasm-url') || rec.wasmUrl || 'https://cdn.jsdelivr.net/npm/chromaprint-wasm@0.1.2/chromaprint_wasm.js').trim();
-    rec.jsUrl = safeText(host && host.getAttribute('data-audio-recognition-js-url') || rec.jsUrl || 'https://cdn.jsdelivr.net/npm/chromaprint@0.1.0/chromaprint.js').trim();
+    rec.wasmUrl = safeText(host && host.getAttribute('data-audio-recognition-wasm-url') || rec.wasmUrl || 'assets/vendor/chromaprint/chromaprint_wasm.js').trim();
+    rec.jsUrl = safeText(host && host.getAttribute('data-audio-recognition-js-url') || rec.jsUrl || '').trim();
     rec.supported = !!(app.audio && (app.audio.captureStream || app.audio.mozCaptureStream) && typeof MediaRecorder !== 'undefined');
     app.audioRecognition = rec;
     return rec;

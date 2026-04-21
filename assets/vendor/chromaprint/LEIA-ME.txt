@@ -1,0 +1,9 @@
+Coloque aqui os arquivos locais do Chromaprint WASM com estes nomes exatos:
+- chromaprint_wasm.js
+- chromaprint_wasm_bg.wasm
+
+Depois, o site vai usar:
+assets/vendor/chromaprint/chromaprint_wasm.js
+
+Observação:
+O .wasm precisa ficar na mesma pasta do .js para o loader resolver o arquivo corretamente.
